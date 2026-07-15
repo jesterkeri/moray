@@ -12,6 +12,8 @@ contract MorayVaultTest is Test {
     uint64 internal constant MIN_DELAY = 60; // new-payee clearing floor
     uint64 internal constant CONFIG_DELAY = 120; // powerful config changes / unfreeze
     uint64 internal constant VETO_DELAY = 180; // inheritance veto window
+    uint64 internal constant WITHDRAW_DELAY = 90; // delayed (large) withdrawal window
+    uint64 internal constant RECLAIM_GRACE = 3600; // recipient grace before sender can reclaim
 
     address internal alice = makeAddr("alice");
     address internal bob = makeAddr("bob");
@@ -21,8 +23,8 @@ contract MorayVaultTest is Test {
     address internal recovery = makeAddr("recovery");
 
     function setUp() public {
-        vm.warp(1_000_000); // non-trivial base time so lastActivity+period never underflows
-        vault = new MorayVault(MIN_DELAY, CONFIG_DELAY, VETO_DELAY);
+        vm.warp(1_000_000);
+        vault = new MorayVault(MIN_DELAY, CONFIG_DELAY, VETO_DELAY, WITHDRAW_DELAY, RECLAIM_GRACE);
         vm.deal(alice, 100 ether);
         vm.deal(bob, 100 ether);
         vm.deal(carol, 100 ether);
@@ -52,9 +54,19 @@ contract MorayVaultTest is Test {
         vault.requestChange(MorayVault.ChangeKind.SetHeir, h, 0);
     }
 
-    function _setInactivity(address u, uint64 period) internal {
+    function _setInactivity(address u, uint256 period) internal {
         vm.prank(u);
         vault.requestChange(MorayVault.ChangeKind.SetInactivity, address(0), period);
+    }
+
+    /// @dev Raise the instant allowance the honest way (timelocked). Advances time
+    ///      by CONFIG_DELAY.
+    function _enableInstant(address u, uint256 limit) internal {
+        vm.prank(u);
+        vault.requestChange(MorayVault.ChangeKind.SetInstantLimit, address(0), limit);
+        vm.warp(block.timestamp + CONFIG_DELAY);
+        vm.prank(u);
+        vault.executeChange();
     }
 
     function _unlockOf(uint256 id) internal view returns (uint64) {
@@ -67,26 +79,35 @@ contract MorayVaultTest is Test {
         return s;
     }
 
-    // ------------------------------------------------------------------ //
-    //                        Deposit / withdraw                           //
-    // ------------------------------------------------------------------ //
-
-    function test_DepositAndWithdraw() public {
-        _deposit(alice, 1 ether);
-        assertEq(vault.balanceOf(alice), 1 ether);
-
-        uint256 walletBefore = alice.balance;
-        vm.prank(alice);
-        vault.withdraw(0.4 ether);
-        assertEq(vault.balanceOf(alice), 0.6 ether);
-        assertEq(alice.balance, walletBefore + 0.4 ether);
+    function _safeAddr(address u) internal view returns (address s) {
+        (s,,,,,,,,) = vault.accounts(u);
     }
 
-    function test_WithdrawInsufficientReverts() public {
+    function _instantLimit(address u) internal view returns (uint256 lim) {
+        (,,,,,, lim,,) = vault.accounts(u);
+    }
+
+    // ------------------------------------------------------------------ //
+    //                     Deposit / hybrid withdraw                       //
+    // ------------------------------------------------------------------ //
+
+    function test_DepositCreditsBalance() public {
         _deposit(alice, 1 ether);
+        assertEq(vault.balanceOf(alice), 1 ether);
+    }
+
+    /// The CRITICAL fix: a fresh/unconfigured account has a 0 instant allowance,
+    /// so even a small withdrawal is a delayed, freezable exit — no instant drain.
+    function test_WithdrawDefaultNoAllowanceIsDelayed() public {
+        _deposit(alice, 1 ether);
+        uint256 walletBefore = alice.balance;
         vm.prank(alice);
-        vm.expectRevert(bytes("insufficient"));
-        vault.withdraw(2 ether);
+        (uint256 id, bool instant) = vault.withdraw(0.01 ether);
+        assertFalse(instant);
+        assertEq(vault.activePendingCount(alice), 1);
+        assertEq(alice.balance, walletBefore); // nothing left the vault
+        assertEq(vault.balanceOf(alice), 0.99 ether);
+        assertEq(uint256(_statusOf(id)), uint256(MorayVault.Status.Pending));
     }
 
     function test_WithdrawZeroReverts() public {
@@ -96,6 +117,111 @@ contract MorayVaultTest is Test {
         vault.withdraw(0);
     }
 
+    function test_WithdrawInsufficientReverts() public {
+        _deposit(alice, 1 ether);
+        vm.prank(alice);
+        vm.expectRevert(bytes("insufficient"));
+        vault.withdraw(2 ether);
+    }
+
+    function test_SmallWithdrawInstantAfterRaisingLimit() public {
+        _deposit(alice, 1 ether);
+        _enableInstant(alice, 0.05 ether);
+        uint256 walletBefore = alice.balance;
+        vm.prank(alice);
+        (, bool instant) = vault.withdraw(0.04 ether);
+        assertTrue(instant);
+        assertEq(alice.balance, walletBefore + 0.04 ether);
+        assertEq(vault.balanceOf(alice), 0.96 ether);
+        assertEq(vault.activePendingCount(alice), 0);
+    }
+
+    function test_LargeWithdrawIsDelayed() public {
+        _deposit(alice, 1 ether);
+        _enableInstant(alice, 0.05 ether);
+        vm.prank(alice);
+        (uint256 id, bool instant) = vault.withdraw(0.5 ether);
+        assertFalse(instant);
+
+        vm.expectRevert(bytes("still clearing"));
+        vault.claim(id);
+
+        vm.warp(block.timestamp + WITHDRAW_DELAY);
+        uint256 walletBefore = alice.balance;
+        vault.claim(id);
+        assertEq(alice.balance, walletBefore + 0.5 ether);
+    }
+
+    function test_WithdrawOverRemainingAllowanceIsDelayed() public {
+        _deposit(alice, 1 ether);
+        _enableInstant(alice, 0.05 ether);
+        vm.prank(alice);
+        (, bool i1) = vault.withdraw(0.04 ether); // spends 0.04 of 0.05
+        assertTrue(i1);
+        vm.prank(alice);
+        (, bool i2) = vault.withdraw(0.02 ether); // 0.02 > 0.01 remaining -> delayed
+        assertFalse(i2);
+    }
+
+    function test_InstantAllowanceRefillsAfterWindow() public {
+        _deposit(alice, 1 ether);
+        _enableInstant(alice, 0.05 ether);
+        vm.prank(alice);
+        (, bool i1) = vault.withdraw(0.05 ether); // full allowance used
+        assertTrue(i1);
+        vm.prank(alice);
+        (, bool i2) = vault.withdraw(0.01 ether); // none left -> delayed
+        assertFalse(i2);
+
+        vm.warp(block.timestamp + vault.INSTANT_WINDOW());
+        vm.prank(alice);
+        (, bool i3) = vault.withdraw(0.01 ether); // window rolled over -> instant again
+        assertTrue(i3);
+    }
+
+    function test_FrozenBlocksInstantWithdraw() public {
+        _deposit(alice, 1 ether);
+        _enableInstant(alice, 0.05 ether);
+        vm.prank(alice);
+        vault.panic();
+        vm.prank(alice);
+        vm.expectRevert(bytes("frozen"));
+        vault.withdraw(0.01 ether);
+    }
+
+    // ------------------------------------------------------------------ //
+    //                    Instant-limit config rules                       //
+    // ------------------------------------------------------------------ //
+
+    function test_RaisingInstantLimitIsTimelocked() public {
+        vm.prank(alice);
+        vault.requestChange(MorayVault.ChangeKind.SetInstantLimit, address(0), 0.05 ether);
+        assertEq(_instantLimit(alice), 0); // not applied during delay
+
+        vm.prank(alice);
+        vm.expectRevert(bytes("not matured"));
+        vault.executeChange();
+
+        vm.warp(block.timestamp + CONFIG_DELAY);
+        vm.prank(alice);
+        vault.executeChange();
+        assertEq(_instantLimit(alice), 0.05 ether);
+    }
+
+    function test_LoweringInstantLimitIsInstant() public {
+        _enableInstant(alice, 0.05 ether);
+        vm.prank(alice);
+        vault.requestChange(MorayVault.ChangeKind.SetInstantLimit, address(0), 0.01 ether);
+        assertEq(_instantLimit(alice), 0.01 ether); // tightening applies immediately
+    }
+
+    function test_SetInstantLimitToZeroIsInstant() public {
+        _enableInstant(alice, 0.05 ether);
+        vm.prank(alice);
+        vault.requestChange(MorayVault.ChangeKind.SetInstantLimit, address(0), 0);
+        assertEq(_instantLimit(alice), 0);
+    }
+
     // ------------------------------------------------------------------ //
     //                    Send & new-payee floor                           //
     // ------------------------------------------------------------------ //
@@ -103,7 +229,7 @@ contract MorayVaultTest is Test {
     function test_NewPayeeFloorRaisesWindow() public {
         _deposit(alice, 1 ether);
         vm.prank(alice);
-        uint256 id = vault.send(bob, 0.2 ether, 0); // asked for 0, forced to MIN_DELAY
+        uint256 id = vault.send(bob, 0.2 ether, 0);
         assertEq(_unlockOf(id), uint64(block.timestamp) + MIN_DELAY);
         assertEq(vault.balanceOf(alice), 0.8 ether);
     }
@@ -111,7 +237,7 @@ contract MorayVaultTest is Test {
     function test_RequestedDelayHonoredAboveFloor() public {
         _deposit(alice, 1 ether);
         vm.prank(alice);
-        uint256 id = vault.send(bob, 0.2 ether, 100); // 100 > 60, honored
+        uint256 id = vault.send(bob, 0.2 ether, 100);
         assertEq(_unlockOf(id), uint64(block.timestamp) + 100);
     }
 
@@ -120,12 +246,12 @@ contract MorayVaultTest is Test {
         vm.prank(alice);
         uint256 id0 = vault.send(bob, 0.2 ether, 0);
         vm.warp(block.timestamp + MIN_DELAY);
-        vault.claim(id0); // sets cleared[alice][bob] = true
+        vault.claim(id0);
         assertTrue(vault.cleared(alice, bob));
 
         vm.prank(alice);
-        uint256 id1 = vault.send(bob, 0.2 ether, 0); // cleared → no forced floor
-        assertEq(_unlockOf(id1), uint64(block.timestamp)); // instant
+        uint256 id1 = vault.send(bob, 0.2 ether, 0);
+        assertEq(_unlockOf(id1), uint64(block.timestamp)); // instant for cleared payee
     }
 
     function test_SendSelfReverts() public {
@@ -161,8 +287,25 @@ contract MorayVaultTest is Test {
         vault.send(bob, 0.1 ether, 0);
     }
 
+    function test_UntrustRevokesInstantSend() public {
+        _deposit(alice, 1 ether);
+        vm.prank(alice);
+        uint256 id0 = vault.send(bob, 0.2 ether, 0);
+        vm.warp(block.timestamp + MIN_DELAY);
+        vault.claim(id0);
+        assertTrue(vault.cleared(alice, bob));
+
+        vm.prank(alice);
+        vault.untrust(bob);
+        assertFalse(vault.cleared(alice, bob));
+
+        vm.prank(alice);
+        uint256 id1 = vault.send(bob, 0.2 ether, 0);
+        assertEq(_unlockOf(id1), uint64(block.timestamp) + MIN_DELAY); // floor re-applied
+    }
+
     // ------------------------------------------------------------------ //
-    //                        Recall (cancel)                              //
+    //                    Recall (cancel) & reclaim                        //
     // ------------------------------------------------------------------ //
 
     function test_CancelRefundsBeforeUnlock() public {
@@ -195,6 +338,47 @@ contract MorayVaultTest is Test {
         vm.prank(bob);
         vm.expectRevert(bytes("not sender"));
         vault.cancel(id);
+    }
+
+    function test_ReclaimAfterGraceForStuckRecipient() public {
+        RejectingRecipient r = new RejectingRecipient();
+        _deposit(alice, 1 ether);
+        vm.prank(alice);
+        uint256 id = vault.send(address(r), 0.3 ether, 0);
+
+        vm.warp(block.timestamp + MIN_DELAY);
+        vm.expectRevert(bytes("send fail"));
+        vault.claim(id); // recipient rejects native value
+
+        vm.prank(alice);
+        vm.expectRevert(bytes("window closed"));
+        vault.cancel(id); // too late to cancel
+
+        vm.warp(block.timestamp + RECLAIM_GRACE);
+        vm.prank(alice);
+        vault.reclaim(id);
+        assertEq(vault.balanceOf(alice), 1 ether);
+        assertEq(vault.activePendingCount(alice), 0);
+    }
+
+    function test_ReclaimBeforeGraceReverts() public {
+        _deposit(alice, 1 ether);
+        vm.prank(alice);
+        uint256 id = vault.send(bob, 0.3 ether, 0);
+        vm.warp(block.timestamp + MIN_DELAY); // unlocked, but inside grace
+        vm.prank(alice);
+        vm.expectRevert(bytes("grace not passed"));
+        vault.reclaim(id);
+    }
+
+    function test_ReclaimByNonSenderReverts() public {
+        _deposit(alice, 1 ether);
+        vm.prank(alice);
+        uint256 id = vault.send(bob, 0.3 ether, 0);
+        vm.warp(block.timestamp + MIN_DELAY + RECLAIM_GRACE);
+        vm.prank(bob);
+        vm.expectRevert(bytes("not sender"));
+        vault.reclaim(id);
     }
 
     // ------------------------------------------------------------------ //
@@ -233,6 +417,17 @@ contract MorayVaultTest is Test {
         vault.claim(id);
     }
 
+    function test_ClearedNotSetOnFailedClaim() public {
+        RejectingRecipient r = new RejectingRecipient();
+        _deposit(alice, 1 ether);
+        vm.prank(alice);
+        uint256 id = vault.send(address(r), 0.3 ether, 0);
+        vm.warp(block.timestamp + MIN_DELAY);
+        vm.expectRevert(bytes("send fail"));
+        vault.claim(id);
+        assertFalse(vault.cleared(alice, address(r))); // only a real cleared claim sets it
+    }
+
     // ------------------------------------------------------------------ //
     //                     Panic / freeze (protective)                     //
     // ------------------------------------------------------------------ //
@@ -254,10 +449,8 @@ contract MorayVaultTest is Test {
     function test_RecoveryContactCanFreeze() public {
         _deposit(alice, 1 ether);
         _setRecovery(alice, recovery);
-
         vm.prank(recovery);
         vault.freeze(alice);
-
         vm.prank(alice);
         vm.expectRevert(bytes("frozen"));
         vault.withdraw(0.1 ether);
@@ -288,7 +481,6 @@ contract MorayVaultTest is Test {
         vm.prank(alice);
         vault.panic();
 
-        // request unfreeze -> pending, NOT instant
         vm.prank(alice);
         vault.requestChange(MorayVault.ChangeKind.Unfreeze, address(0), 0);
 
@@ -300,9 +492,10 @@ contract MorayVaultTest is Test {
         vm.prank(alice);
         vault.executeChange();
 
-        // now egress works again
+        // egress works again (delayed, since no instant allowance)
         vm.prank(alice);
-        vault.withdraw(0.1 ether);
+        (, bool instant) = vault.withdraw(0.1 ether);
+        assertFalse(instant);
         assertEq(vault.balanceOf(alice), 0.9 ether);
     }
 
@@ -320,7 +513,7 @@ contract MorayVaultTest is Test {
         _deposit(alice, 1 ether);
         _setSafe(alice, safe);
         vm.prank(alice);
-        vault.send(bob, 0.3 ether, 0); // 0.3 in flight, 0.7 in balance
+        vault.send(bob, 0.3 ether, 0);
         assertEq(vault.activePendingCount(alice), 1);
 
         uint256 safeBefore = safe.balance;
@@ -329,16 +522,16 @@ contract MorayVaultTest is Test {
         vm.prank(alice);
         vault.killSwitch(alice);
 
-        assertEq(safe.balance, safeBefore + 1 ether); // balance + reclaimed pending
+        assertEq(safe.balance, safeBefore + 1 ether);
         assertEq(address(vault).balance, vaultBefore - 1 ether);
         assertEq(vault.balanceOf(alice), 0);
         assertEq(vault.activePendingCount(alice), 0);
         (,,,, MorayVault.Status s) = vault.transfers(0);
         assertEq(uint256(s), uint256(MorayVault.Status.Cancelled));
-        // account stays frozen after sweep
+
         vm.prank(alice);
         vm.expectRevert(bytes("frozen"));
-        vault.withdraw(1);
+        vault.withdraw(1); // stays frozen after sweep
     }
 
     function test_RecoveryContactCanKillSwitchButOnlyToSafe() public {
@@ -371,22 +564,31 @@ contract MorayVaultTest is Test {
         vault.killSwitch(alice);
     }
 
+    function test_ReentrancyOnKillSwitchBlocked() public {
+        ReentrantKillSafe s = new ReentrantKillSafe(vault);
+        s.target(alice);
+        _deposit(alice, 1 ether);
+        _setSafe(alice, address(s));
+        _setRecovery(alice, address(s)); // authorized re-entry -> must hit the guard
+
+        vm.prank(alice);
+        vm.expectRevert(bytes("sweep fail"));
+        vault.killSwitch(alice);
+        assertEq(vault.balanceOf(alice), 1 ether); // rolled back, funds intact
+    }
+
     // ------------------------------------------------------------------ //
     //                    Timelocked config changes                        //
     // ------------------------------------------------------------------ //
 
     function test_ConfigInstantOnFirstSetThenTimelocked() public {
-        // first set is instant
         _setSafe(alice, safe);
-        (address s0,,,,,) = vault.accounts(alice);
-        assertEq(s0, safe);
+        assertEq(_safeAddr(alice), safe);
 
-        // changing it is timelocked and does not apply immediately
         address safe2 = makeAddr("safe2");
         vm.prank(alice);
         vault.requestChange(MorayVault.ChangeKind.SetSafe, safe2, 0);
-        (address s1,,,,,) = vault.accounts(alice);
-        assertEq(s1, safe); // unchanged during delay
+        assertEq(_safeAddr(alice), safe); // unchanged during delay
 
         vm.prank(alice);
         vm.expectRevert(bytes("not matured"));
@@ -395,8 +597,7 @@ contract MorayVaultTest is Test {
         vm.warp(block.timestamp + CONFIG_DELAY);
         vm.prank(alice);
         vault.executeChange();
-        (address s2,,,,,) = vault.accounts(alice);
-        assertEq(s2, safe2);
+        assertEq(_safeAddr(alice), safe2);
     }
 
     function test_OwnerCanCancelPendingChange() public {
@@ -411,8 +612,7 @@ contract MorayVaultTest is Test {
         vm.prank(alice);
         vm.expectRevert(bytes("no change"));
         vault.executeChange();
-        (address s,,,,,) = vault.accounts(alice);
-        assertEq(s, safe); // still the original
+        assertEq(_safeAddr(alice), safe);
     }
 
     function test_OnlyOnePendingChangeAtATime() public {
@@ -445,7 +645,6 @@ contract MorayVaultTest is Test {
         _deposit(alice, 1 ether);
         _setHeir(alice, heir);
         _setInactivity(alice, 1000);
-
         vm.prank(heir);
         vm.expectRevert(bytes("still active"));
         vault.startInheritance(alice);
@@ -456,11 +655,10 @@ contract MorayVaultTest is Test {
         _setHeir(alice, heir);
         _setInactivity(alice, 1000);
 
-        vm.warp(block.timestamp + 1001); // owner went silent
+        vm.warp(block.timestamp + 1001);
         vm.prank(heir);
         vault.startInheritance(alice);
 
-        // cannot execute inside the veto window
         vm.prank(heir);
         vm.expectRevert(bytes("veto window"));
         vault.executeInheritance(alice);
@@ -481,7 +679,6 @@ contract MorayVaultTest is Test {
         vm.prank(heir);
         vault.startInheritance(alice);
 
-        // owner proves life
         vm.prank(alice);
         vault.checkIn();
 
@@ -499,12 +696,69 @@ contract MorayVaultTest is Test {
         vm.prank(heir);
         vault.startInheritance(alice);
 
-        // an ordinary deposit is a sign of life
-        _deposit(alice, 0.5 ether);
+        _deposit(alice, 0.5 ether); // ordinary activity = sign of life
 
         vm.warp(block.timestamp + VETO_DELAY);
         vm.prank(heir);
         vm.expectRevert(bytes("no inheritance"));
+        vault.executeInheritance(alice);
+    }
+
+    function test_OwnerSelfClaimCancelsInheritance() public {
+        _deposit(alice, 1 ether);
+        _setHeir(alice, heir);
+        _setInactivity(alice, 1000);
+        vm.prank(alice);
+        uint256 id = vault.send(bob, 0.3 ether, 0);
+
+        vm.warp(block.timestamp + 1001);
+        vm.prank(heir);
+        vault.startInheritance(alice);
+
+        vm.prank(alice); // owner claims her own transfer -> proves life
+        vault.claim(id);
+
+        vm.warp(block.timestamp + VETO_DELAY);
+        vm.prank(heir);
+        vm.expectRevert(bytes("no inheritance"));
+        vault.executeInheritance(alice);
+    }
+
+    function test_ThirdPartyClaimDoesNotProveLife() public {
+        _deposit(alice, 1 ether);
+        _setHeir(alice, heir);
+        _setInactivity(alice, 1000);
+        vm.prank(alice);
+        uint256 id = vault.send(bob, 0.3 ether, 0);
+
+        vm.warp(block.timestamp + 1001);
+        vm.prank(heir);
+        vault.startInheritance(alice);
+
+        vm.prank(bob); // recipient (third party) claims -> NOT a sign of alice's life
+        vault.claim(id);
+
+        vm.warp(block.timestamp + VETO_DELAY);
+        uint256 heirBefore = heir.balance;
+        vm.prank(heir);
+        vault.executeInheritance(alice); // still proceeds
+        assertEq(heir.balance, heirBefore + 0.7 ether);
+    }
+
+    function test_PanicCancelsInheritance() public {
+        _deposit(alice, 1 ether);
+        _setHeir(alice, heir);
+        _setInactivity(alice, 1000);
+        vm.warp(block.timestamp + 1001);
+        vm.prank(heir);
+        vault.startInheritance(alice);
+
+        vm.prank(alice);
+        vault.panic(); // deliberate owner action -> proves life AND freezes
+
+        vm.warp(block.timestamp + VETO_DELAY);
+        vm.prank(heir);
+        vm.expectRevert(bytes("no inheritance")); // cancelled, not merely frozen
         vault.executeInheritance(alice);
     }
 
@@ -518,9 +772,7 @@ contract MorayVaultTest is Test {
         vault.startInheritance(alice);
         vm.warp(block.timestamp + VETO_DELAY);
 
-        // recovery contact freezes to block a wrongful inheritance (does not
-        // count as owner activity)
-        vm.prank(recovery);
+        vm.prank(recovery); // recovery freeze does NOT count as owner life
         vault.freeze(alice);
 
         vm.prank(heir);
@@ -528,24 +780,35 @@ contract MorayVaultTest is Test {
         vault.executeInheritance(alice);
     }
 
-    function test_NonHeirCannotStartOrExecute() public {
+    function test_NonHeirCannotStart() public {
         _deposit(alice, 1 ether);
         _setHeir(alice, heir);
         _setInactivity(alice, 1000);
         vm.warp(block.timestamp + 1001);
-
         vm.prank(bob);
         vm.expectRevert(bytes("not heir"));
         vault.startInheritance(alice);
+    }
+
+    function test_NonHeirCannotExecute() public {
+        _deposit(alice, 1 ether);
+        _setHeir(alice, heir);
+        _setInactivity(alice, 1000);
+        vm.warp(block.timestamp + 1001);
+        vm.prank(heir);
+        vault.startInheritance(alice);
+        vm.warp(block.timestamp + VETO_DELAY);
+        vm.prank(bob);
+        vm.expectRevert(bytes("not heir"));
+        vault.executeInheritance(alice);
     }
 
     function test_InheritanceReclaimsPendingSends() public {
         _deposit(alice, 1 ether);
         _setHeir(alice, heir);
         _setInactivity(alice, 1000);
-        // an old in-flight send that predates the silence
         vm.prank(alice);
-        vault.send(bob, 0.3 ether, 0);
+        vault.send(bob, 0.3 ether, 0); // old in-flight send
 
         vm.warp(block.timestamp + 1001);
         vm.prank(heir);
@@ -559,16 +822,35 @@ contract MorayVaultTest is Test {
         assertEq(vault.activePendingCount(alice), 0);
     }
 
+    function test_ReentrancyOnInheritanceBlocked() public {
+        ReentrantHeir h = new ReentrantHeir(vault);
+        h.target(alice);
+        _deposit(alice, 1 ether);
+        _setHeir(alice, address(h));
+        _setInactivity(alice, 1000);
+        vm.warp(block.timestamp + 1001);
+        h.start();
+        vm.warp(block.timestamp + VETO_DELAY);
+
+        vm.expectRevert(bytes("inherit fail"));
+        h.exec();
+        assertEq(vault.balanceOf(alice), 1 ether); // rolled back, nothing double-spent
+    }
+
     // ------------------------------------------------------------------ //
     //                          Reentrancy                                 //
     // ------------------------------------------------------------------ //
 
-    function test_ReentrancyOnWithdrawBlocked() public {
+    function test_ReentrancyOnInstantWithdrawBlocked() public {
         ReentrantWithdraw attacker = new ReentrantWithdraw(vault);
         vm.deal(address(attacker), 1 ether);
         attacker.fund{value: 1 ether}();
+        attacker.raiseLimit(0.5 ether);
+        vm.warp(block.timestamp + CONFIG_DELAY);
+        attacker.finalizeLimit();
+
         vm.expectRevert(); // inner re-entry trips the guard -> outer "send fail"
-        attacker.attack(0.5 ether);
+        attacker.attack(0.1 ether);
         assertEq(vault.balanceOf(address(attacker)), 1 ether); // nothing drained
     }
 
@@ -581,8 +863,7 @@ contract MorayVaultTest is Test {
         vm.warp(block.timestamp + MIN_DELAY);
         vm.expectRevert();
         vault.claim(id);
-        // the send is untouched (still pending), nothing double-spent
-        assertEq(uint256(_statusOf(id)), uint256(MorayVault.Status.Pending));
+        assertEq(uint256(_statusOf(id)), uint256(MorayVault.Status.Pending)); // untouched
     }
 
     // ------------------------------------------------------------------ //
@@ -599,16 +880,17 @@ contract MorayVaultTest is Test {
         vm.prank(bob);
         uint256 id = vault.send(carol, 0.5 ether, 0);
         vm.prank(alice);
-        vault.withdraw(0.5 ether);
+        vault.withdraw(0.5 ether); // delayed (no allowance) -> stays pending in the vault
 
         vm.warp(block.timestamp + MIN_DELAY);
         vault.claim(id); // pay carol
 
-        // accounted funds == real contract balance
         uint256 accounted = vault.balanceOf(alice) + vault.balanceOf(bob) + vault.balanceOf(carol);
-        // still-pending amounts (alice's send to carol, id 0)
-        (,, uint256 amt0,, MorayVault.Status s0) = vault.transfers(0);
-        if (s0 == MorayVault.Status.Pending) accounted += amt0;
+        for (uint256 i = 0; i < vault.nextTransferId(); i++) {
+            (,, uint256 amt,, MorayVault.Status s) = vault.transfers(i);
+            if (s == MorayVault.Status.Pending) accounted += amt;
+        }
+        // No forced native value here, so the >= solvency invariant holds as equality.
         assertEq(accounted, address(vault).balance);
     }
 }
@@ -616,6 +898,12 @@ contract MorayVaultTest is Test {
 // ---------------------------------------------------------------------- //
 //                        Malicious helpers                                //
 // ---------------------------------------------------------------------- //
+
+contract RejectingRecipient {
+    receive() external payable {
+        revert("no thanks");
+    }
+}
 
 contract ReentrantWithdraw {
     MorayVault internal vault;
@@ -629,6 +917,14 @@ contract ReentrantWithdraw {
         vault.deposit{value: msg.value}();
     }
 
+    function raiseLimit(uint256 limit) external {
+        vault.requestChange(MorayVault.ChangeKind.SetInstantLimit, address(0), limit);
+    }
+
+    function finalizeLimit() external {
+        vault.executeChange();
+    }
+
     function attack(uint256 amt) external {
         armed = true;
         vault.withdraw(amt);
@@ -637,7 +933,7 @@ contract ReentrantWithdraw {
     receive() external payable {
         if (armed) {
             armed = false;
-            vault.withdraw(0.1 ether); // re-entry attempt
+            vault.withdraw(0.001 ether); // re-entry attempt
         }
     }
 }
@@ -656,5 +952,47 @@ contract ReentrantClaim {
 
     receive() external payable {
         vault.claim(id); // re-entry attempt on the same transfer
+    }
+}
+
+contract ReentrantKillSafe {
+    MorayVault internal vault;
+    address internal victim;
+
+    constructor(MorayVault _v) {
+        vault = _v;
+    }
+
+    function target(address v) external {
+        victim = v;
+    }
+
+    receive() external payable {
+        vault.killSwitch(victim); // re-entry attempt during the sweep
+    }
+}
+
+contract ReentrantHeir {
+    MorayVault internal vault;
+    address internal victim;
+
+    constructor(MorayVault _v) {
+        vault = _v;
+    }
+
+    function target(address v) external {
+        victim = v;
+    }
+
+    function start() external {
+        vault.startInheritance(victim);
+    }
+
+    function exec() external {
+        vault.executeInheritance(victim);
+    }
+
+    receive() external payable {
+        vault.executeInheritance(victim); // re-entry attempt during the sweep
     }
 }

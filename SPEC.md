@@ -6,20 +6,17 @@ _Last updated: session before the morning resume (Monad Spark hackathon build)._
 
 ## ▶ RESUME HERE (do this first next session)
 
-1. **Build the contract security modules into `MorayVault.sol`** (highest-value,
-   most review-worthy, do it fresh):
-   - Kill switch: `setSafeAddress` (timelocked change) + `killSwitch()` (sweep
-     balance + cancel pendings to the safe address).
-   - Dead Man's Switch: `setHeir`, `checkIn`, inactivity → heir can start a
-     **delayed, owner-vetoable** withdrawal.
-   - Recovery-contact module + the **owner-veto** state machine (see invariant).
-   - Instant `panic()` freeze/cancel of pending sends (NOT delayed).
-   Then a Foundry test suite that proves each control **denies the bad case**,
-   then a Codex adversarial pass.
-2. Then scaffold the Next.js + **Privy** frontend (auth + embedded wallet) and
-   wire the recipient-risk read.
-3. First git commit must land **inside the hackathon window** (see Spark rules).
-   Repo is fresh, no commits yet.
+Contract + tests DONE (61 green, Codex r1 addressed). Next:
+
+1. **Codex r2** on the r1 fixes (hybrid withdraw / reclaim / self-claim life /
+   panic life / untrust / instant-limit rules / reentrancy on kill+inherit).
+   Prompt draft at `%TEMP%\moray-codex-r2.md`. Triage → fix → until SHIP.
+2. **Deploy `MorayVault` to Monad testnet** (`forge script`, key from env, never
+   committed). Record the address in SPEC + README; verify one on-chain round-trip.
+3. **Scaffold Next.js + Privy** (auth + embedded wallet on Monad testnet), wire
+   the deployed address + ABI, then the recipient-risk read.
+
+See `BUILD_PLAN.md` for the full day-by-day. Commits are landing in-window.
 
 ---
 
@@ -51,8 +48,14 @@ moved anyone; don't oversell to DevRel judges).
 ## Locked scope
 
 **IN (v1):**
-- Vault: deposit / withdraw; funds live in the contract (native MON for v1).
-- Recallable clearing send; new-payee minimum window **enforced on-chain**.
+- Vault: deposit; **bank-style withdraw** — instant up to a per-24h
+  `instantLimit` (default 0 = everything delayed), larger/over-limit exits become
+  delayed recallable/freezable exits. Raising the limit is timelocked; lowering
+  is instant. Funds live in the contract (native MON for v1).
+- Recallable clearing send; new-payee minimum window **enforced on-chain**;
+  `untrust` re-arms the floor for a previously-cleared payee.
+- `reclaim` returns funds to the sender if a recipient can't receive after a
+  grace window (anti-wedge), without breaking recipient finality during grace.
 - Beneficiaries: **names/notes off-chain & private** (local for v1); the on-chain
   `cleared[from][to]` flag is the trust half → trusted payee can clear instantly.
 - Recipient-risk screen: off-chain read (age, tx count, flagged links, poisoning
@@ -132,19 +135,26 @@ statement/audit trail. Adversarial Codex pass on every contract commit.
 
 ## What's built vs to-build
 
-**Built:** `src/MorayVault.sol` — P0 core: deposit/withdraw, `send` with on-chain
-new-payee min-delay enforcement, `cancel` (recall), `claim` (pays recipient +
-sets `cleared` trust), reentrancy guard, full events. Complete demo on its own.
-`foundry.toml` present. **No tests yet. No git commit yet.**
+**Built:** `src/MorayVault.sol` — COMPLETE. P0 core + all security modules:
+deposit, hybrid `withdraw` (instant allowance + delayed exits), `send` with
+on-chain new-payee floor, `cancel`/`reclaim`, `claim` (owner self-claim proves
+life), `untrust`, panic/recovery `freeze`, timelocked `killSwitch` → safe address,
+config state machine (instant-first-set, raise-timelocked/lower-instant for the
+limit), Dead Man's Switch with vetoable inheritance, bounded pending-set sweeps,
+reentrancy guard + CEI, full events. `test/MorayVault.t.sol` = **61 tests green**.
+Git commits in-window. Codex **r1 done (FIX-FIRST, all findings addressed)**;
+**r2 pending** on the fixes.
 
 **To build (priority):**
-- P0 tests (Foundry) — prove new-payee hold, recall refund, claim pays + trusts,
-  cleared payee instant.
-- Security modules: kill switch, Dead Man's Switch, recovery/veto/delay, panic.
+- Codex r2 adversarial pass on the fixes → SHIP.
+- Deploy to Monad testnet; wire contract address into frontend env.
 - Frontend: Next.js + Privy, send flow w/ recipient-risk verdict + countdown,
-  pending/recall, beneficiaries (local names), safety (safe addr / panic / kill),
-  statement.
-- Deploy to Monad testnet; wire contract address; 3-min demo video; public repo.
+  pending/recall, instant-vs-delayed withdraw, beneficiaries (local names),
+  safety (safe addr / recovery / panic / kill / heir / instant limit), statement.
+- 3-min demo video; public repo.
+
+**v2 roadmap add:** per-account instant limit is live; a richer tiered/limit UX
+and portable encrypted beneficiary sync remain v2 (see OUT list).
 
 ---
 
