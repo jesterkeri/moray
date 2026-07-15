@@ -6,13 +6,15 @@ _Last updated: session before the morning resume (Monad Spark hackathon build)._
 
 ## ▶ RESUME HERE (do this first next session)
 
-Contract + tests DONE (61 green, Codex r1 addressed). Next:
+Contract + tests DONE (68 green, Codex r1 + r2 addressed). Next:
 
-1. **Codex r2** on the r1 fixes (hybrid withdraw / reclaim / self-claim life /
-   panic life / untrust / instant-limit rules / reentrancy on kill+inherit).
-   Prompt draft at `%TEMP%\moray-codex-r2.md`. Triage → fix → until SHIP.
+1. **Codex r3** on the r2 fixes (unified send/withdraw egress policy so send()
+   can't bypass the limit; safe-address empty-gate; rejecting safe/heir doc;
+   lint). Prompt draft at `%TEMP%\moray-codex-r3.md`. Triage → fix → until SHIP.
 2. **Deploy `MorayVault` to Monad testnet** (`forge script`, key from env, never
-   committed). Record the address in SPEC + README; verify one on-chain round-trip.
+   committed). Deploy params: `withdrawDelay >= minNewPayeeDelay`, both a
+   meaningful fraud-reaction window. Record the address in SPEC + README; verify
+   one on-chain round-trip.
 3. **Scaffold Next.js + Privy** (auth + embedded wallet on Monad testnet), wire
    the deployed address + ABI, then the recipient-risk read.
 
@@ -52,8 +54,13 @@ moved anyone; don't oversell to DevRel judges).
   `instantLimit` (default 0 = everything delayed), larger/over-limit exits become
   delayed recallable/freezable exits. Raising the limit is timelocked; lowering
   is instant. Funds live in the contract (native MON for v1).
-- Recallable clearing send; new-payee minimum window **enforced on-chain**;
-  `untrust` re-arms the floor for a previously-cleared payee.
+- Recallable clearing send under the SAME egress policy as withdraw (no bypass):
+  delay = max(requested, new-payee floor if untrusted, large-exit `withdrawDelay`
+  if amount > remaining instant allowance); an instant send consumes the shared
+  allowance. `untrust` re-arms the floor for a previously-cleared payee.
+- Safe-address first-set is instant only while the vault is EMPTY; on a funded
+  vault it is timelocked (so a stolen signer can't set safe=attacker then
+  killSwitch-drain instantly).
 - `reclaim` returns funds to the sender if a recipient can't receive after a
   grace window (anti-wedge), without breaking recipient finality during grace.
 - Beneficiaries: **names/notes off-chain & private** (local for v1); the on-chain
@@ -136,18 +143,19 @@ statement/audit trail. Adversarial Codex pass on every contract commit.
 ## What's built vs to-build
 
 **Built:** `src/MorayVault.sol` — COMPLETE. P0 core + all security modules:
-deposit, hybrid `withdraw` (instant allowance + delayed exits), `send` with
-on-chain new-payee floor, `cancel`/`reclaim`, `claim` (owner self-claim proves
-life), `untrust`, panic/recovery `freeze`, timelocked `killSwitch` → safe address,
-config state machine (instant-first-set, raise-timelocked/lower-instant for the
-limit), Dead Man's Switch with vetoable inheritance, bounded pending-set sweeps,
-reentrancy guard + CEI, full events. `test/MorayVault.t.sol` = **61 tests green**.
-Git commits in-window. Codex **r1 done (FIX-FIRST, all findings addressed)**;
-**r2 pending** on the fixes.
+deposit, hybrid `withdraw` (instant allowance + delayed exits), `send` under the
+SAME unified egress policy (no bypass), `cancel`/`reclaim`, `claim` (owner
+self-claim proves life), `untrust`, panic/recovery `freeze`, timelocked
+`killSwitch` → safe address (first-set instant only while empty, else timelocked),
+config state machine (raise-timelocked/lower-instant for the limit), Dead Man's
+Switch with vetoable inheritance, bounded pending-set sweeps, reentrancy guard +
+CEI, full events. `test/MorayVault.t.sol` = **68 tests green**. Git commits
+in-window. Codex **r1 + r2 done (both FIX-FIRST, all findings addressed)**;
+**r3 pending** on the r2 fixes.
 
 **To build (priority):**
-- Codex r2 adversarial pass on the fixes → SHIP.
-- Deploy to Monad testnet; wire contract address into frontend env.
+- Codex r3 adversarial pass on the r2 fixes → SHIP.
+- Deploy to Monad testnet (`withdrawDelay >= minNewPayeeDelay`); wire address into env.
 - Frontend: Next.js + Privy, send flow w/ recipient-risk verdict + countdown,
   pending/recall, instant-vs-delayed withdraw, beneficiaries (local names),
   safety (safe addr / recovery / panic / kill / heir / instant limit), statement.

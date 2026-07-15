@@ -12,12 +12,16 @@ pragma solidity ^0.8.24;
 ///         up to your per-24h `instantLimit` is instant; anything above the
 ///         remaining allowance (and, by default on a fresh account, everything —
 ///         the limit starts at 0) becomes a delayed, recallable, freezable exit.
-///         Raising the allowance is itself timelocked; lowering it is instant. A
-///         send to a payee likewise clears through a window, with a forced floor
-///         for never-cleared payees. The only instant movement of any size is the
-///         kill switch, which can pay exactly ONE place: your own pre-committed
-///         safe address. So a thief who steals your live signer can take at most
-///         your small allowance per day, never the whole vault at once.
+///         Raising the allowance is itself timelocked; lowering it is instant.
+///         Sends obey the SAME policy: a send within the remaining allowance to a
+///         cleared payee is instant (and spends the allowance), but any amount
+///         above the allowance, or to a never-cleared payee, is held for a delay
+///         and is recallable/freezable — so `send` cannot be used to dodge the
+///         withdrawal limit. The only instant movement of any size is the kill
+///         switch, which can pay exactly ONE place: your own pre-committed safe
+///         address (instant-settable only while the vault is empty, otherwise
+///         timelocked). So a thief who steals your live signer can move at most
+///         your small allowance per day instantly, never the whole vault at once.
 ///
 ///         Moray closes the three ways people lose crypto:
 ///           1. Bad / scam send  -> recallable clearing window + new-payee floor.
@@ -282,26 +286,40 @@ contract MorayVault {
         return _remainingInstant(user);
     }
 
-    /// @notice Send from your vault balance through a clearing window.
-    /// @param to Recipient.
-    /// @param amount Amount to send.
-    /// @param requestedDelay Clearing window you ask for. If `to` is not yet a
-    ///        cleared payee, the contract raises it to `minNewPayeeDelay`.
+    /// @notice Send from your vault balance through a clearing window. Egress is
+    ///         governed by the SAME policy as `withdraw`, so `send` cannot be used
+    ///         to dodge the withdrawal limits:
+    ///           - a never-cleared payee gets at least `minNewPayeeDelay`
+    ///             (anti-mistake hold);
+    ///           - any amount above your remaining instant allowance gets at least
+    ///             `withdrawDelay` (anti-drain hold);
+    ///           - the final delay is the max of those and your `requestedDelay`.
+    ///         A send that ends up instant (delay 0 — only possible to a cleared
+    ///         payee for an amount within your allowance) consumes the instant
+    ///         allowance, exactly like an instant withdrawal. So a stolen signer
+    ///         can move at most your per-window allowance instantly, via send or
+    ///         withdraw alike.
     /// @return id The new transfer id.
     function send(address to, uint256 amount, uint64 requestedDelay) external returns (uint256 id) {
         require(!accounts[msg.sender].frozen, "frozen");
         require(to != address(0), "zero to");
-        require(to != msg.sender, "self"); // use requestWithdraw to pay yourself
+        require(to != msg.sender, "self"); // use withdraw to pay yourself
         require(amount > 0, "zero");
         require(balanceOf[msg.sender] >= amount, "insufficient");
         require(_activePending[msg.sender].length < MAX_ACTIVE_PENDING, "too many pending");
 
         uint64 delay = requestedDelay;
-        if (!cleared[msg.sender][to] && delay < minNewPayeeDelay) {
-            delay = minNewPayeeDelay; // enforced floor for an untrusted payee
+        if (!cleared[msg.sender][to]) {
+            delay = _max64(delay, minNewPayeeDelay); // anti-mistake hold for a new payee
+        }
+        if (amount > _remainingInstant(msg.sender)) {
+            delay = _max64(delay, withdrawDelay); // anti-drain hold for a large exit
         }
 
         balanceOf[msg.sender] -= amount;
+        if (delay == 0) {
+            _spendInstant(msg.sender, amount); // instant egress consumes the allowance
+        }
         id = nextTransferId++;
         uint64 unlockTime = uint64(block.timestamp) + delay;
         transfers[id] =
@@ -416,8 +434,15 @@ contract MorayVault {
     ///         cancelled and reclaimed) to the pre-committed safe address, then
     ///         leave the account frozen. Callable by the owner OR the recovery
     ///         contact. It can ONLY ever pay the owner's own `safeAddress`
-    ///         (set earlier, under timelock), so a malicious recovery contact
-    ///         can move funds to the owner's cold wallet but can never steal.
+    ///         (set instantly only on an empty account, otherwise under timelock),
+    ///         so a malicious recovery contact can move funds to the owner's cold
+    ///         wallet but can never steal.
+    ///
+    ///         User-config risk (documented): the safe address MUST be able to
+    ///         receive native value (an EOA or a payable contract). If it reverts
+    ///         on receipt this call reverts cleanly (no funds lost, account state
+    ///         unchanged); the owner recovers by changing the safe address through
+    ///         the normal timelocked path and retrying.
     function killSwitch(address user) external nonReentrant {
         require(msg.sender == user || msg.sender == accounts[user].recoveryContact, "not authorized");
         address safe = accounts[user].safeAddress;
@@ -487,7 +512,16 @@ contract MorayVault {
             require(addr != msg.sender, "self"); // don't name yourself as recovery/heir/safe helper role
             address current =
                 kind == ChangeKind.SetSafe ? a.safeAddress : (kind == ChangeKind.SetRecovery ? a.recoveryContact : a.heir);
-            if (current == address(0)) {
+            // First set is instant EXCEPT the safe address on a funded account:
+            // killSwitch pays the safe address with no delay, so an instant first
+            // safe-set on a funded vault would let a stolen signer set safe=attacker
+            // then killSwitch to drain instantly. On a funded account the safe
+            // address must always go through the timelock (owner-vetoable).
+            bool instantOk = current == address(0);
+            if (kind == ChangeKind.SetSafe && !_isEmpty(msg.sender)) {
+                instantOk = false;
+            }
+            if (instantOk) {
                 _applyChange(msg.sender, kind, addr, num); // instant initial set
                 return;
             }
@@ -526,6 +560,8 @@ contract MorayVault {
         } else if (kind == ChangeKind.SetHeir) {
             a.heir = addr;
         } else if (kind == ChangeKind.SetInactivity) {
+            // safe: requestChange enforces num <= type(uint64).max for SetInactivity
+            // forge-lint: disable-next-line(unsafe-typecast)
             a.inactivityPeriod = uint64(num);
         } else if (kind == ChangeKind.SetInstantLimit) {
             a.instantLimit = num;
@@ -566,6 +602,9 @@ contract MorayVault {
 
     /// @notice After the veto window, and only if the owner is still silent and
     ///         the account isn't frozen, the heir sweeps the account to itself.
+    ///         User-config risk (documented): like the safe address, the heir must
+    ///         be able to receive native value; a reverting heir makes this call
+    ///         revert cleanly (no funds lost) until the heir is changed.
     function executeInheritance(address user) external nonReentrant {
         Account storage a = accounts[user];
         Inheritance memory inh = inheritance[user];
@@ -601,6 +640,16 @@ contract MorayVault {
     // --------------------------------------------------------------------- //
     //                          Internal helpers                             //
     // --------------------------------------------------------------------- //
+
+    /// @notice True while the account holds no funds and has no in-flight items.
+    ///         Used to gate the instant first-set of the safe address.
+    function _isEmpty(address user) internal view returns (bool) {
+        return balanceOf[user] == 0 && _activePending[user].length == 0;
+    }
+
+    function _max64(uint64 a, uint64 b) internal pure returns (uint64) {
+        return a >= b ? a : b;
+    }
 
     /// @notice Instant allowance still available to `user` in the current window.
     ///         A fresh window (or a never-used one) offers the full `instantLimit`.
