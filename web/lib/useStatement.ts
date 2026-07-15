@@ -43,9 +43,11 @@ export function useStatement(refreshKey?: number) {
       return;
     }
     let cancelled = false;
+    let latest = 0; // only the most-recently-STARTED load may commit its result
     const moray = MORAY_ADDRESS;
 
     const load = async (showLoading: boolean) => {
+      const seq = ++latest;
       if (showLoading) setLoading(true);
       const common = { address: moray, abi: morayAbi, fromBlock: FROM_BLOCK, toBlock: 'latest' as const };
       try {
@@ -109,15 +111,17 @@ export function useStatement(refreshKey?: number) {
 
         list.sort((a, b) => (a.blockNumber !== b.blockNumber ? (a.blockNumber < b.blockNumber ? 1 : -1) : b.logIndex - a.logIndex));
 
-        if (!cancelled) {
+        if (!cancelled && seq === latest) {
           setEntries(list);
           setError(false);
           setLoading(false);
         }
       } catch {
-        if (!cancelled) {
-          setError(true);
+        if (!cancelled && seq === latest) {
           setLoading(false);
+          // Only a foreground load surfaces a hard error; a failed background retry
+          // keeps the existing good data rather than blanking it.
+          if (showLoading) setError(true);
         }
       }
     };
