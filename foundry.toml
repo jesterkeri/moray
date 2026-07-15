@@ -7,9 +7,11 @@ solc = "0.8.24"
 optimizer = true
 optimizer_runs = 200
 
-# Fill these in when you deploy to Monad testnet:
-# [rpc_endpoints]
-# monad_testnet = "${MONAD_TESTNET_RPC}"
-#
-# Deploy key comes from an env var, never commit it:
-#   forge script ... --rpc-url monad_testnet --private-key $DEPLOYER_KEY --broadcast
+[rpc_endpoints]
+# Set MONAD_TESTNET_RPC in your env (e.g. https://testnet-rpc.monad.xyz).
+monad_testnet = "${MONAD_TESTNET_RPC}"
+
+# Deploy (key from an env var, never commit it):
+#   forge script script/Deploy.s.sol:Deploy \
+#     --rpc-url monad_testnet --private-key $DEPLOYER_KEY --broadcast
+# Monad testnet chain id: 10143. Deployer needs testnet MON for gas.
