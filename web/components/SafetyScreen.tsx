@@ -129,6 +129,7 @@ export function SafetyScreen({ onChange }: { onChange?: () => void }) {
     setEditValue('');
     setEditError(null);
     setKillConfirm(false);
+    setBusyLabel(null); // avoid a stale spinner label carrying across accounts
   }, [address]);
 
   // Close an open edit form if readiness drops while it's mounted.
