@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAccount, useBalance, useReadContract } from 'wagmi';
 import {
   MORAY_ADDRESS,
@@ -9,23 +9,33 @@ import {
   formatMon,
   shortAddress,
 } from '@/lib/moray';
+import { formatDuration } from '@/lib/format';
 import {
   ArrowDownIcon,
   ArrowUpIcon,
   SendIcon,
   ShieldIcon,
   ListIcon,
+  CheckIcon,
 } from './icons';
+import { Modal } from './Modal';
+import { SendFlow } from './SendFlow';
+import { PendingList } from './PendingList';
 
 type Panel = 'deposit' | 'send' | 'withdraw' | 'safety' | null;
 
 export function Dashboard() {
   const { address } = useAccount();
   const [panel, setPanel] = useState<Panel>(null);
+  const [toast, setToast] = useState<string | null>(null);
 
   const configured = isConfigured();
 
-  const { data: vaultBalance, isLoading: vaultLoading } = useReadContract({
+  const {
+    data: vaultBalance,
+    isLoading: vaultLoading,
+    refetch: refetchVault,
+  } = useReadContract({
     address: MORAY_ADDRESS,
     abi: morayAbi,
     functionName: 'balanceOf',
@@ -37,6 +47,12 @@ export function Dashboard() {
     address,
     query: { enabled: Boolean(address) },
   });
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 5000);
+    return () => clearTimeout(t);
+  }, [toast]);
 
   if (!configured) {
     return (
@@ -69,30 +85,34 @@ export function Dashboard() {
         </div>
 
         <div className="action-grid">
-          <ActionButton
-            label="Deposit"
-            icon={<ArrowDownIcon />}
-            onClick={() => setPanel('deposit')}
-          />
-          <ActionButton
-            label="Send"
-            icon={<SendIcon />}
-            onClick={() => setPanel('send')}
-          />
-          <ActionButton
-            label="Withdraw"
-            icon={<ArrowUpIcon />}
-            onClick={() => setPanel('withdraw')}
-          />
-          <ActionButton
-            label="Safety"
-            icon={<ShieldIcon />}
-            onClick={() => setPanel('safety')}
-          />
+          <ActionButton label="Deposit" icon={<ArrowDownIcon />} onClick={() => setPanel('deposit')} />
+          <ActionButton label="Send" icon={<SendIcon />} onClick={() => setPanel('send')} />
+          <ActionButton label="Withdraw" icon={<ArrowUpIcon />} onClick={() => setPanel('withdraw')} />
+          <ActionButton label="Safety" icon={<ShieldIcon />} onClick={() => setPanel('safety')} />
         </div>
       </section>
 
-      {panel && <FlowPlaceholder panel={panel} onClose={() => setPanel(null)} />}
+      <PendingList onChange={() => refetchVault()} />
+
+      {panel === 'send' && (
+        <Modal title="Send" onClose={() => setPanel(null)}>
+          <SendFlow
+            onSent={({ seconds }) => {
+              setPanel(null);
+              refetchVault();
+              setToast(
+                seconds === 0
+                  ? 'Sent — it clears instantly.'
+                  : `Sent. Clearing in ${formatDuration(seconds)} — recall it below any time.`,
+              );
+            }}
+          />
+        </Modal>
+      )}
+
+      {panel && panel !== 'send' && (
+        <FlowPlaceholder panel={panel} onClose={() => setPanel(null)} />
+      )}
 
       <section className="section">
         <div className="section-head">
@@ -110,6 +130,15 @@ export function Dashboard() {
           </div>
         </div>
       </section>
+
+      {toast && (
+        <div className="toast">
+          <span style={{ color: 'var(--accent)', display: 'grid', placeItems: 'center' }}>
+            <CheckIcon size={16} />
+          </span>
+          {toast}
+        </div>
+      )}
     </div>
   );
 }
@@ -136,10 +165,7 @@ const FLOW_COPY: Record<Exclude<Panel, null>, { title: string; desc: string }> =
     title: 'Deposit into your safe',
     desc: 'Move MON from your wallet into the vault, where the protections apply.',
   },
-  send: {
-    title: 'Send through a clearing window',
-    desc: 'Pick a recipient and amount. New or risky payees are held so you can recall before it clears.',
-  },
+  send: { title: '', desc: '' },
   withdraw: {
     title: 'Withdraw to your wallet',
     desc: 'Small amounts are instant; larger amounts enter a recallable, freezable window.',
@@ -150,8 +176,6 @@ const FLOW_COPY: Record<Exclude<Panel, null>, { title: string; desc: string }> =
   },
 };
 
-// Honest placeholder: the shell + live reads are real; these action flows are the
-// next build step. No fake data, no fake success.
 function FlowPlaceholder({ panel, onClose }: { panel: Exclude<Panel, null>; onClose: () => void }) {
   const copy = FLOW_COPY[panel];
   return (
