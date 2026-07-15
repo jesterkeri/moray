@@ -61,6 +61,7 @@ export function SafetyScreen({ onChange }: { onChange?: () => void }) {
 
   const a = acctData as unknown as AcctTuple | undefined;
   const p = pendingData as unknown as PendingTuple | undefined;
+  const configReady = acctData !== undefined && pendingData !== undefined && configDelay !== undefined;
 
   const safe = a?.[0];
   const recovery = a?.[1];
@@ -80,10 +81,11 @@ export function SafetyScreen({ onChange }: { onChange?: () => void }) {
   const safeMatured = hasSafe && cfgDelay !== undefined && now > 0 && now >= safeSetAt + cfgDelay;
 
   const { writeContract, data: hash, isPending } = useWriteContract();
-  const { isLoading: mining, isSuccess: confirmed } = useWaitForTransactionReceipt({
-    hash,
-    query: { enabled: Boolean(hash) },
-  });
+  const {
+    isLoading: mining,
+    isSuccess: confirmed,
+    isError: receiptFailed,
+  } = useWaitForTransactionReceipt({ hash, query: { enabled: Boolean(hash) } });
 
   const [editing, setEditing] = useState<number | null>(null);
   const [editValue, setEditValue] = useState('');
@@ -104,6 +106,15 @@ export function SafetyScreen({ onChange }: { onChange?: () => void }) {
     setKillConfirm(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [confirmed]);
+
+  // A mined-but-failed tx (revert) or a receipt-wait error must not leave a button
+  // spinning forever.
+  useEffect(() => {
+    if (receiptFailed) {
+      setBusyLabel(null);
+      setKillConfirm(false);
+    }
+  }, [receiptFailed]);
 
   function requestChange(kind: number, addr: string, num: bigint, label: string) {
     if (!MORAY_ADDRESS) return;
@@ -158,10 +169,10 @@ export function SafetyScreen({ onChange }: { onChange?: () => void }) {
         return setEditError('That is your own account.');
       requestChange(kind, editValue, 0n, KIND_LABEL[kind]);
     } else if (type === 'duration') {
-      const secs = Number(editValue);
-      if (!Number.isFinite(secs) || secs <= 0 || !Number.isInteger(secs))
-        return setEditError('Enter a whole number of seconds.');
-      requestChange(kind, ZERO, BigInt(secs), KIND_LABEL[kind]);
+      if (!/^\d+$/.test(editValue)) return setEditError('Enter a whole number of seconds.');
+      const secs = BigInt(editValue); // parse the digit string directly, no Number() rounding
+      if (secs <= 0n) return setEditError('Enter a positive number of seconds.');
+      requestChange(kind, ZERO, secs, KIND_LABEL[kind]);
     } else {
       const wei = parseMon(editValue);
       if (wei === null) return setEditError('Enter a valid amount.');
@@ -175,35 +186,35 @@ export function SafetyScreen({ onChange }: { onChange?: () => void }) {
     {
       kind: KIND.SetSafe,
       label: 'Safe address',
-      value: fmtAddr(safe),
+      value: configReady ? fmtAddr(safe) : '…',
       hint: 'Where the kill switch sweeps your funds. Set it from a trusted device.',
       type: 'address',
     },
     {
       kind: KIND.SetRecovery,
       label: 'Recovery contact',
-      value: fmtAddr(recovery),
+      value: configReady ? fmtAddr(recovery) : '…',
       hint: 'Can freeze your vault or sweep to your safe address if your key is stolen. Can never take your funds.',
       type: 'address',
     },
     {
       kind: KIND.SetHeir,
       label: 'Heir',
-      value: fmtAddr(heir),
+      value: configReady ? fmtAddr(heir) : '…',
       hint: 'Inherits after you go inactive, on a delay you can always veto by using your vault.',
       type: 'address',
     },
     {
       kind: KIND.SetInactivity,
       label: 'Inactivity period',
-      value: inactivity > 0 ? formatDuration(inactivity) : 'Off',
+      value: configReady ? (inactivity > 0 ? formatDuration(inactivity) : 'Off') : '…',
       hint: 'How long of silence before your heir can start inheriting.',
       type: 'duration',
     },
     {
       kind: KIND.SetInstantLimit,
       label: 'Instant limit',
-      value: instantLimit !== undefined ? `${formatMon(instantLimit)} MON` : '—',
+      value: configReady && instantLimit !== undefined ? `${formatMon(instantLimit)} MON` : '…',
       hint: 'How much you can cash out instantly per day. Raising it is time-locked; lowering is instant.',
       type: 'amount',
     },
@@ -254,7 +265,7 @@ export function SafetyScreen({ onChange }: { onChange?: () => void }) {
               </div>
               <button
                 className="btn btn-secondary btn-sm"
-                disabled={busy || hasPending || editing !== null}
+                disabled={busy || hasPending || editing !== null || !configReady}
                 onClick={() => openEdit(row.kind)}
               >
                 {row.value === 'Not set' || row.value === 'Off' || row.value === '—' ? 'Set' : 'Change'}
@@ -313,7 +324,7 @@ export function SafetyScreen({ onChange }: { onChange?: () => void }) {
             action={
               <button
                 className="btn btn-secondary btn-sm"
-                disabled={busy || hasPending}
+                disabled={busy || hasPending || !configReady}
                 onClick={() => requestChange(KIND.Unfreeze, ZERO, 0n, 'Unfreeze')}
               >
                 {busyLabel === 'Unfreeze' ? <span className="spinner-sm" /> : 'Unfreeze'}
@@ -325,7 +336,11 @@ export function SafetyScreen({ onChange }: { onChange?: () => void }) {
             title="Panic freeze"
             desc="Instantly stop all money leaving your vault. Reversible with a time-locked unfreeze."
             action={
-              <button className="btn btn-danger btn-sm" disabled={busy} onClick={() => simpleWrite('panic', 'panic')}>
+              <button
+                className="btn btn-danger btn-sm"
+                disabled={busy || !configReady}
+                onClick={() => simpleWrite('panic', 'panic')}
+              >
                 {busyLabel === 'panic' ? <span className="spinner-sm" /> : 'Freeze'}
               </button>
             }
@@ -345,11 +360,13 @@ export function SafetyScreen({ onChange }: { onChange?: () => void }) {
         <EmergencyRow
           title="Kill switch"
           desc={
-            !hasSafe
-              ? 'Set a safe address first. Then this sweeps everything there and freezes the vault.'
-              : !safeMatured
-                ? `Sweeps everything to your safe address and freezes the vault. Your safe address matures in ${cfgDelay !== undefined && now > 0 ? formatDuration(safeSetAt + cfgDelay - now) : '…'}.`
-                : `Sweeps everything to ${shortAddress(safe)} and freezes the vault.`
+            !configReady
+              ? 'Loading your settings…'
+              : !hasSafe
+                ? 'Set a safe address first. Then this sweeps everything there and freezes the vault.'
+                : !safeMatured
+                  ? `Sweeps everything to your safe address and freezes the vault. Your safe address matures in ${cfgDelay !== undefined && now > 0 ? formatDuration(safeSetAt + cfgDelay - now) : '…'}.`
+                  : `Sweeps everything to ${shortAddress(safe)} and freezes the vault.`
           }
           action={
             killConfirm && safeMatured ? (
@@ -359,7 +376,7 @@ export function SafetyScreen({ onChange }: { onChange?: () => void }) {
             ) : (
               <button
                 className="btn btn-danger btn-sm"
-                disabled={busy || !safeMatured}
+                disabled={busy || !safeMatured || !configReady}
                 onClick={() => setKillConfirm(true)}
               >
                 Kill switch
