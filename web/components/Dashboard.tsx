@@ -24,6 +24,7 @@ import { DepositFlow } from './DepositFlow';
 import { WithdrawFlow } from './WithdrawFlow';
 import { SafetyScreen } from './SafetyScreen';
 import { PendingList } from './PendingList';
+import { StatementView } from './StatementView';
 
 type Panel = 'deposit' | 'send' | 'withdraw' | 'safety' | null;
 
@@ -31,6 +32,8 @@ export function Dashboard() {
   const { address } = useAccount();
   const [panel, setPanel] = useState<Panel>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [statementKey, setStatementKey] = useState(0);
+  const bumpStatement = () => setStatementKey((k) => k + 1);
 
   const configured = isConfigured();
 
@@ -99,6 +102,7 @@ export function Dashboard() {
         onChange={() => {
           refetchVault();
           refetchWallet();
+          bumpStatement();
         }}
       />
 
@@ -109,6 +113,7 @@ export function Dashboard() {
               setPanel(null);
               refetchVault();
               refetchWallet();
+              bumpStatement();
               setToast(`Deposited ${amount} MON into your safe.`);
             }}
           />
@@ -121,6 +126,7 @@ export function Dashboard() {
             onSent={({ seconds, known }) => {
               setPanel(null);
               refetchVault();
+              bumpStatement();
               setToast(
                 !known
                   ? 'Sent. Check Clearing below.'
@@ -140,6 +146,7 @@ export function Dashboard() {
               setPanel(null);
               refetchVault();
               refetchWallet();
+              bumpStatement();
               setToast(
                 !known
                   ? 'Submitted. Check Clearing below.'
@@ -158,6 +165,7 @@ export function Dashboard() {
             onChange={() => {
               refetchVault();
               refetchWallet();
+              bumpStatement();
             }}
           />
         </Modal>
@@ -166,18 +174,14 @@ export function Dashboard() {
       <section className="section">
         <div className="section-head">
           <span className="h-title" style={{ fontSize: 15 }}>
-            Statement
+            Activity
           </span>
           <span className="badge">
-            <ListIcon size={14} /> Coming next
+            <ListIcon size={14} /> On-chain
           </span>
         </div>
         <div className="card">
-          <div className="empty">
-            The full statement, your spend by payee from the vault&apos;s on-chain
-            events, lands with the next build. Payments in flight already show live
-            in Clearing above.
-          </div>
+          <StatementView refreshKey={statementKey} />
         </div>
       </section>
 

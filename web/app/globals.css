@@ -744,6 +744,47 @@ button {
   color: var(--accent);
 }
 
+/* --- statement -------------------------------------------------------------- */
+.stmt-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  transition: background 120ms ease;
+}
+.stmt-row:last-child {
+  border-bottom: none;
+}
+a.stmt-row:hover {
+  background: var(--surface-2);
+}
+.stmt-icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border-radius: var(--radius-full);
+  background: var(--surface-2);
+  color: var(--text-muted);
+}
+.stmt-main {
+  flex: 1;
+  min-width: 0;
+}
+.stmt-title {
+  font-size: 14px;
+  font-weight: 550;
+}
+.stmt-amt {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
 /* --- toast ------------------------------------------------------------------ */
 .toast {
   position: fixed;
