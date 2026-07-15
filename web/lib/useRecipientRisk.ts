@@ -21,6 +21,7 @@ export function useRecipientRisk(to: string, knownPayees: KnownPayee[] = []) {
       return;
     }
     const id = ++reqId.current;
+    setVerdict(null); // drop the previous address's verdict immediately (no stale "trusted")
     setLoading(true);
     const handle = setTimeout(() => {
       assessRecipient({

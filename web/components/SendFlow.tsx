@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { isAddress, parseEther } from 'viem';
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { MORAY_ADDRESS, morayAbi, formatMon } from '@/lib/moray';
+import { monadTestnet } from '@/lib/chain';
 import { formatDuration } from '@/lib/format';
 import { useRecipientRisk } from '@/lib/useRecipientRisk';
 import type { RiskLevel } from '@/lib/risk';
@@ -67,7 +68,7 @@ export function SendFlow({
   const overBalance = amtWei !== null && vaultBalance !== undefined && amtWei > (vaultBalance as bigint);
   const validAmt = amtWei !== null && amtWei > 0n && !overBalance;
 
-  const window = useMemo(() => {
+  const clearing = useMemo(() => {
     if (!validTo || !validAmt || amtWei === null) return null;
     if (minDelay === undefined || withdrawDelay === undefined || remaining === undefined) return null;
     const clearedFlag = verdict?.cleared ?? false;
@@ -87,13 +88,16 @@ export function SendFlow({
 
   useEffect(() => {
     if (isSuccess) {
-      onSent({ to, amount: amountStr, seconds: window?.seconds ?? 0 });
+      onSent({ to, amount: amountStr, seconds: clearing?.seconds ?? 0 });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSuccess]);
 
   const busy = isPending || mining;
-  const canSend = enabled && validTo && validAmt && !busy;
+  // Only allow send once the recipient has been assessed and the window preview
+  // is resolved, so the user never sends without seeing what will actually happen.
+  const canSend =
+    enabled && validTo && validAmt && !busy && clearing !== null && !riskLoading && verdict !== null;
 
   function submit() {
     if (!canSend || amtWei === null || !MORAY_ADDRESS) return;
@@ -102,6 +106,7 @@ export function SendFlow({
       abi: morayAbi,
       functionName: 'send',
       args: [to as `0x${string}`, amtWei, 0n],
+      chainId: monadTestnet.id,
     });
   }
 
@@ -172,7 +177,7 @@ export function SendFlow({
       </div>
 
       {/* Window preview */}
-      {window && (
+      {clearing && (
         <div className="form-group">
           <div className="window-card">
             <span className="window-icon">
@@ -180,9 +185,11 @@ export function SendFlow({
             </span>
             <div>
               <div className="window-main">
-                {window.seconds === 0 ? 'Clears instantly' : `Clears in ${formatDuration(window.seconds)}`}
+                {clearing.seconds === 0
+                  ? 'Clears instantly'
+                  : `Clears in ${formatDuration(clearing.seconds)}`}
               </div>
-              <div className="window-sub">{window.reason}</div>
+              <div className="window-sub">{clearing.reason}</div>
             </div>
           </div>
         </div>

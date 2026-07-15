@@ -117,16 +117,17 @@ export function Dashboard() {
       <section className="section">
         <div className="section-head">
           <span className="h-title" style={{ fontSize: 15 }}>
-            Activity
+            Statement
           </span>
           <span className="badge">
-            <ListIcon size={14} /> Statement
+            <ListIcon size={14} /> Coming next
           </span>
         </div>
         <div className="card">
           <div className="empty">
-            No activity yet. Deposits, sends, and recalls will appear here, read
-            straight from the vault&apos;s on-chain events.
+            The full statement, your spend by payee from the vault&apos;s on-chain
+            events, lands with the next build. Payments in flight already show live
+            in Clearing above.
           </div>
         </div>
       </section>

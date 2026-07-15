@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useAccount, useReadContract, useReadContracts, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { MORAY_ADDRESS, morayAbi, formatMon, shortAddress } from '@/lib/moray';
+import { monadTestnet } from '@/lib/chain';
 import { formatDuration } from '@/lib/format';
 import { useNow } from '@/lib/useNow';
 
@@ -19,6 +20,13 @@ export function PendingList({ onChange }: { onChange?: () => void }) {
     functionName: 'activePendingIds',
     args: address ? [address] : undefined,
     query: { enabled, refetchInterval: 5000 },
+  });
+
+  const { data: reclaimGrace } = useReadContract({
+    address: MORAY_ADDRESS,
+    abi: morayAbi,
+    functionName: 'reclaimGrace',
+    query: { enabled },
   });
 
   const idList = (ids as bigint[] | undefined) ?? [];
@@ -43,11 +51,11 @@ export function PendingList({ onChange }: { onChange?: () => void }) {
     },
   });
 
-  function act(id: bigint, fn: 'cancel' | 'claim') {
+  function act(id: bigint, fn: 'cancel' | 'claim' | 'reclaim') {
     if (!MORAY_ADDRESS) return;
     setActingId(id);
     writeContract(
-      { address: MORAY_ADDRESS, abi: morayAbi, functionName: fn, args: [id] },
+      { address: MORAY_ADDRESS, abi: morayAbi, functionName: fn, args: [id], chainId: monadTestnet.id },
       {
         onSettled: () => {
           setTimeout(() => {
@@ -87,8 +95,11 @@ export function PendingList({ onChange }: { onChange?: () => void }) {
       </div>
       <div className="card">
         {rows.map((row) => {
+          const grace = reclaimGrace !== undefined ? Number(reclaimGrace) : Infinity;
           const remaining = now > 0 ? row.unlock - now : row.unlock;
-          const done = now > 0 && remaining <= 0;
+          const graceRemaining = now > 0 ? row.unlock + grace - now : Infinity;
+          const phase: 'clearing' | 'grace' | 'stuck' =
+            remaining > 0 ? 'clearing' : graceRemaining > 0 ? 'grace' : 'stuck';
           const actingThis = busy && actingId === row.id;
           return (
             <div className="pending-row" key={row.id.toString()}>
@@ -99,28 +110,36 @@ export function PendingList({ onChange }: { onChange?: () => void }) {
                 <div className="pending-amt mono">{formatMon(row.amount)} MON</div>
               </div>
 
-              {done ? (
+              {phase === 'clearing' && (
+                <>
+                  <span className="countdown">{formatDuration(remaining)}</span>
+                  <button className="btn btn-danger btn-sm" disabled={busy} onClick={() => act(row.id, 'cancel')}>
+                    {actingThis ? <span className="spinner-sm" /> : 'Recall'}
+                  </button>
+                </>
+              )}
+              {phase === 'grace' && (
                 <>
                   <span className="countdown" data-done="true">
                     Cleared
                   </span>
-                  <button
-                    className="btn btn-secondary btn-sm"
-                    disabled={busy}
-                    onClick={() => act(row.id, 'claim')}
-                  >
+                  <button className="btn btn-secondary btn-sm" disabled={busy} onClick={() => act(row.id, 'claim')}>
                     {actingThis ? <span className="spinner-sm" /> : 'Release'}
                   </button>
                 </>
-              ) : (
+              )}
+              {phase === 'stuck' && (
                 <>
-                  <span className="countdown">{formatDuration(remaining)}</span>
+                  <span className="countdown" data-done="true">
+                    Unclaimed
+                  </span>
                   <button
-                    className="btn btn-danger btn-sm"
+                    className="btn btn-secondary btn-sm"
                     disabled={busy}
-                    onClick={() => act(row.id, 'cancel')}
+                    onClick={() => act(row.id, 'reclaim')}
+                    title="The recipient never collected this. Pull it back into your vault."
                   >
-                    {actingThis ? <span className="spinner-sm" /> : 'Recall'}
+                    {actingThis ? <span className="spinner-sm" /> : 'Reclaim'}
                   </button>
                 </>
               )}
