@@ -59,8 +59,15 @@ moved anyone; don't oversell to DevRel judges).
   if amount > remaining instant allowance); an instant send consumes the shared
   allowance. `untrust` re-arms the floor for a previously-cleared payee.
 - Safe-address first-set is instant only while the vault is EMPTY; on a funded
-  vault it is timelocked (so a stolen signer can't set safe=attacker then
-  killSwitch-drain instantly).
+  vault it is timelocked. AND killSwitch requires the safe address to have MATURED
+  (`configDelay` after being set), so NO fund-redirecting action is instant. This
+  blocks the opportunistic pre-position (stolen signer sets safe=attacker on an
+  empty vault and sweeps same-session). **Honest residual (documented):** a
+  PATIENT attacker who controls the signer while the vault is empty can set a
+  malicious safe, wait out maturity, then sweep once the owner funds — the
+  "compromised at setup" hard case. Mitigation is procedural: set the safe address
+  and fund from a trusted device; once funded, safe changes are timelocked +
+  vetoable.
 - `reclaim` returns funds to the sender if a recipient can't receive after a
   grace window (anti-wedge), without breaking recipient finality during grace.
 - Beneficiaries: **names/notes off-chain & private** (local for v1); the on-chain

@@ -89,11 +89,11 @@ contract MorayVaultTest is Test {
     }
 
     function _safeAddr(address u) internal view returns (address s) {
-        (s,,,,,,,,) = vault.accounts(u);
+        (s,,,,,,,,,) = vault.accounts(u);
     }
 
     function _instantLimit(address u) internal view returns (uint256 lim) {
-        (,,,,,, lim,,) = vault.accounts(u);
+        (,,,,,, lim,,,) = vault.accounts(u);
     }
 
     // ------------------------------------------------------------------ //
@@ -303,6 +303,48 @@ contract MorayVaultTest is Test {
         vm.prank(alice);
         uint256 id2 = vault.send(bob, 0.03 ether, 0); // 0.03 > 0.02 remaining -> delayed
         assertEq(_unlockOf(id2), uint64(block.timestamp) + WITHDRAW_DELAY);
+    }
+
+    /// Instant send and instant withdraw draw down ONE shared per-window allowance,
+    /// so they cannot be combined in a block to exceed instantLimit.
+    function test_InstantSendAndWithdrawShareOneAllowance() public {
+        _deposit(alice, 1 ether);
+        _enableInstant(alice, 0.05 ether);
+        _clearPayee(alice, bob, 0.01 ether);
+
+        vm.prank(alice);
+        uint256 sid = vault.send(bob, 0.03 ether, 0); // instant, consumes 0.03
+        assertEq(_unlockOf(sid), uint64(block.timestamp));
+        assertEq(vault.remainingInstantAllowance(alice), 0.02 ether);
+
+        vm.prank(alice);
+        (, bool instant) = vault.withdraw(0.03 ether); // 0.03 > 0.02 remaining -> delayed
+        assertFalse(instant);
+
+        vm.prank(alice);
+        (, bool instant2) = vault.withdraw(0.02 ether); // exactly the remainder -> instant
+        assertTrue(instant2);
+        assertEq(vault.remainingInstantAllowance(alice), 0);
+    }
+
+    function test_AllowanceRefillsAtWindowBoundaryMixed() public {
+        _deposit(alice, 1 ether);
+        _enableInstant(alice, 0.05 ether);
+        _clearPayee(alice, bob, 0.01 ether);
+
+        vm.prank(alice);
+        uint256 sid = vault.send(bob, 0.05 ether, 0); // instant, exhausts the window
+        assertEq(_unlockOf(sid), uint64(block.timestamp));
+        assertEq(vault.remainingInstantAllowance(alice), 0);
+
+        vm.prank(alice);
+        (, bool i1) = vault.withdraw(0.01 ether); // before rollover -> delayed
+        assertFalse(i1);
+
+        vm.warp(block.timestamp + vault.INSTANT_WINDOW());
+        vm.prank(alice);
+        (, bool i2) = vault.withdraw(0.01 ether); // window rolled over -> instant
+        assertTrue(i2);
     }
 
     function test_SendSelfReverts() public {
@@ -571,6 +613,7 @@ contract MorayVaultTest is Test {
         uint256 safeBefore = safe.balance;
         uint256 vaultBefore = address(vault).balance;
 
+        vm.warp(block.timestamp + CONFIG_DELAY); // mature the safe address
         vm.prank(alice);
         vault.killSwitch(alice);
 
@@ -594,6 +637,7 @@ contract MorayVaultTest is Test {
         uint256 safeBefore = safe.balance;
         uint256 recoveryBefore = recovery.balance;
 
+        vm.warp(block.timestamp + CONFIG_DELAY); // mature the safe address
         vm.prank(recovery);
         vault.killSwitch(alice);
 
@@ -623,6 +667,7 @@ contract MorayVaultTest is Test {
         _setRecovery(alice, address(s)); // authorized re-entry -> must hit the guard
         _deposit(alice, 1 ether);
 
+        vm.warp(block.timestamp + CONFIG_DELAY); // mature the safe address
         vm.prank(alice);
         vm.expectRevert(bytes("sweep fail"));
         vault.killSwitch(alice);
@@ -636,10 +681,48 @@ contract MorayVaultTest is Test {
         _setSafe(alice, address(r)); // while empty -> instant
         _deposit(alice, 1 ether);
 
+        vm.warp(block.timestamp + CONFIG_DELAY); // mature the safe address
         vm.prank(alice);
         vm.expectRevert(bytes("sweep fail"));
         vault.killSwitch(alice);
         assertEq(vault.balanceOf(alice), 1 ether); // state reverts cleanly, recoverable
+    }
+
+    /// A safe address cannot be used by killSwitch until it has matured
+    /// (configDelay after being set) — no fund-redirecting action is instant.
+    function test_KillSwitchRejectsFreshSafeUntilMatured() public {
+        _setSafe(alice, safe); // instant while empty, but not yet matured
+        _deposit(alice, 1 ether);
+
+        vm.prank(alice);
+        vm.expectRevert(bytes("safe not matured"));
+        vault.killSwitch(alice);
+
+        vm.warp(block.timestamp + CONFIG_DELAY);
+        uint256 safeBefore = safe.balance;
+        vm.prank(alice);
+        vault.killSwitch(alice);
+        assertEq(safe.balance, safeBefore + 1 ether);
+    }
+
+    /// Pre-position attack (compromised-at-setup): a stolen signer sets a malicious
+    /// safe while the vault is empty. The maturity gate blocks the opportunistic
+    /// same-session sweep; a PATIENT attacker who waits out maturity can still
+    /// drain — the documented, accepted "compromised at setup" residual.
+    function test_PrepositionedSafeCannotInstantKillButMaturesForPatientAttacker() public {
+        address attackerSafe = makeAddr("attackerSafe");
+        _setSafe(alice, attackerSafe); // instant, because empty
+        _deposit(alice, 10 ether); // user funds later
+
+        vm.prank(alice);
+        vm.expectRevert(bytes("safe not matured"));
+        vault.killSwitch(alice); // NOT an instant drain
+
+        vm.warp(block.timestamp + CONFIG_DELAY);
+        uint256 attackerBefore = attackerSafe.balance;
+        vm.prank(alice);
+        vault.killSwitch(alice); // documented residual: works after maturity
+        assertEq(attackerSafe.balance, attackerBefore + 10 ether);
     }
 
     // ------------------------------------------------------------------ //

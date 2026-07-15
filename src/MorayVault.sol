@@ -17,11 +17,13 @@ pragma solidity ^0.8.24;
 ///         cleared payee is instant (and spends the allowance), but any amount
 ///         above the allowance, or to a never-cleared payee, is held for a delay
 ///         and is recallable/freezable — so `send` cannot be used to dodge the
-///         withdrawal limit. The only instant movement of any size is the kill
-///         switch, which can pay exactly ONE place: your own pre-committed safe
-///         address (instant-settable only while the vault is empty, otherwise
-///         timelocked). So a thief who steals your live signer can move at most
-///         your small allowance per day instantly, never the whole vault at once.
+///         withdrawal limit. Even the kill switch is not an instant full drain:
+///         it pays exactly ONE place, your own pre-committed safe address, and
+///         only once that address has matured (`configDelay` after being set;
+///         it is instant-settable only while the vault is empty, otherwise
+///         timelocked). So NO fund-redirecting action is instant, and a thief who
+///         steals your live signer can move at most your small allowance per day
+///         instantly, never the whole vault at once.
 ///
 ///         Moray closes the three ways people lose crypto:
 ///           1. Bad / scam send  -> recallable clearing window + new-payee floor.
@@ -89,6 +91,7 @@ contract MorayVault {
         uint256 instantLimit; // instant cash-out allowance per INSTANT_WINDOW (0 = all delayed)
         uint64 instantWindowStart; // start of the current instant-allowance window
         uint256 instantSpent; // instant amount already used in the current window
+        uint64 safeSetAt; // when safeAddress was last set (killSwitch requires it aged by configDelay)
     }
 
     /// @notice The kinds of powerful change routed through the timelock.
@@ -433,10 +436,23 @@ contract MorayVault {
     /// @notice Sweep the entire account (balance + every pending item, which are
     ///         cancelled and reclaimed) to the pre-committed safe address, then
     ///         leave the account frozen. Callable by the owner OR the recovery
-    ///         contact. It can ONLY ever pay the owner's own `safeAddress`
-    ///         (set instantly only on an empty account, otherwise under timelock),
-    ///         so a malicious recovery contact can move funds to the owner's cold
-    ///         wallet but can never steal.
+    ///         contact. It can ONLY ever pay the owner's own `safeAddress`, so a
+    ///         malicious recovery contact can move funds to the owner's cold wallet
+    ///         but can never steal.
+    ///
+    ///         The safe address must have MATURED: it can only be used by
+    ///         killSwitch once `configDelay` has passed since it was set. This is
+    ///         the last piece that makes NO fund-redirecting action in this
+    ///         contract instant. It blocks the opportunistic pre-position attack
+    ///         (a stolen signer setting safe=attacker on an empty vault and
+    ///         sweeping in the same session).
+    ///
+    ///         Honest residual (documented, not hidden): a PATIENT attacker who
+    ///         controls the signer while the vault is empty can set a malicious
+    ///         safe, wait out the maturity, then sweep once the owner funds. This
+    ///         is the "compromised at setup" hard case: set your safe address and
+    ///         fund from a trusted device. Once the vault holds funds, changing the
+    ///         safe address is timelocked and owner-vetoable.
     ///
     ///         User-config risk (documented): the safe address MUST be able to
     ///         receive native value (an EOA or a payable contract). If it reverts
@@ -447,6 +463,7 @@ contract MorayVault {
         require(msg.sender == user || msg.sender == accounts[user].recoveryContact, "not authorized");
         address safe = accounts[user].safeAddress;
         require(safe != address(0), "no safe address");
+        require(block.timestamp >= accounts[user].safeSetAt + configDelay, "safe not matured");
 
         uint256 total = balanceOf[user];
         balanceOf[user] = 0;
@@ -555,6 +572,7 @@ contract MorayVault {
         Account storage a = accounts[user];
         if (kind == ChangeKind.SetSafe) {
             a.safeAddress = addr;
+            a.safeSetAt = uint64(block.timestamp); // start the killSwitch maturity clock
         } else if (kind == ChangeKind.SetRecovery) {
             a.recoveryContact = addr;
         } else if (kind == ChangeKind.SetHeir) {
