@@ -22,6 +22,7 @@ import { Modal } from './Modal';
 import { SendFlow } from './SendFlow';
 import { DepositFlow } from './DepositFlow';
 import { WithdrawFlow } from './WithdrawFlow';
+import { SafetyScreen } from './SafetyScreen';
 import { PendingList } from './PendingList';
 
 type Panel = 'deposit' | 'send' | 'withdraw' | 'safety' | null;
@@ -151,7 +152,16 @@ export function Dashboard() {
         </Modal>
       )}
 
-      {panel === 'safety' && <FlowPlaceholder panel="safety" onClose={() => setPanel(null)} />}
+      {panel === 'safety' && (
+        <Modal title="Safety" onClose={() => setPanel(null)}>
+          <SafetyScreen
+            onChange={() => {
+              refetchVault();
+              refetchWallet();
+            }}
+          />
+        </Modal>
+      )}
 
       <section className="section">
         <div className="section-head">
@@ -197,44 +207,6 @@ function ActionButton({
       <span className="action-icon">{icon}</span>
       {label}
     </button>
-  );
-}
-
-const FLOW_COPY: Record<Exclude<Panel, null>, { title: string; desc: string }> = {
-  deposit: {
-    title: 'Deposit into your safe',
-    desc: 'Move MON from your wallet into the vault, where the protections apply.',
-  },
-  send: { title: '', desc: '' },
-  withdraw: {
-    title: 'Withdraw to your wallet',
-    desc: 'Small amounts are instant; larger amounts enter a recallable, freezable window.',
-  },
-  safety: {
-    title: 'Safety controls',
-    desc: 'Set your safe address, recovery contact, heir and instant limit; panic-freeze or trigger the kill switch.',
-  },
-};
-
-function FlowPlaceholder({ panel, onClose }: { panel: Exclude<Panel, null>; onClose: () => void }) {
-  const copy = FLOW_COPY[panel];
-  return (
-    <section className="card card-pad section" style={{ marginTop: 16 }}>
-      <div className="row between" style={{ marginBottom: 8 }}>
-        <span className="h-title" style={{ fontSize: 16 }}>
-          {copy.title}
-        </span>
-        <button className="btn btn-ghost btn-sm" onClick={onClose}>
-          Close
-        </button>
-      </div>
-      <p className="muted" style={{ fontSize: 14, marginBottom: 14 }}>
-        {copy.desc}
-      </p>
-      <span className="badge badge-accent">
-        <span className="dot" /> Flow lands in the next build step
-      </span>
-    </section>
   );
 }
 

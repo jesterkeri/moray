@@ -62,7 +62,10 @@ export function PendingList({ onChange }: { onChange?: () => void }) {
   function act(id: bigint, fn: 'cancel' | 'claim' | 'reclaim') {
     if (!MORAY_ADDRESS) return;
     setActingId(id);
-    writeContract({ address: MORAY_ADDRESS, abi: morayAbi, functionName: fn, args: [id], chainId: monadTestnet.id });
+    writeContract(
+      { address: MORAY_ADDRESS, abi: morayAbi, functionName: fn, args: [id], chainId: monadTestnet.id },
+      { onError: () => setActingId(null) },
+    );
   }
 
   const rows = idList

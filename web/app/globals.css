@@ -763,6 +763,63 @@ button {
   animation: sheet-in 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
+/* --- safety screen ---------------------------------------------------------- */
+.safety-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 14px;
+  border-radius: var(--radius-md);
+  margin-bottom: 16px;
+}
+.safety-banner[data-tone='warning'] {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+.safety-banner[data-tone='accent'] {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.safety-section-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  margin: 22px 2px 4px;
+}
+.set-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 0;
+  border-top: 1px solid var(--border);
+}
+.set-row:first-child {
+  border-top: none;
+}
+.set-label {
+  font-size: 13.5px;
+  font-weight: 550;
+}
+.set-value {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+.set-hint {
+  font-size: 12px;
+  color: var(--text-faint);
+  margin-top: 3px;
+  line-height: 1.4;
+  max-width: 260px;
+}
+.set-edit {
+  padding: 4px 2px 14px;
+  border-top: 1px solid var(--border);
+}
+
 /* --- inline spinner --------------------------------------------------------- */
 .spinner-sm {
   width: 15px;
