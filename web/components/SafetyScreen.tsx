@@ -116,6 +116,12 @@ export function SafetyScreen({ onChange }: { onChange?: () => void }) {
     }
   }, [receiptFailed]);
 
+  // If readiness or the safe's maturity drops (account switch, query reset, read
+  // failure), drop any armed kill-switch confirm so a sweep can't fire on stale state.
+  useEffect(() => {
+    if (!configReady || !safeMatured) setKillConfirm(false);
+  }, [configReady, safeMatured]);
+
   function requestChange(kind: number, addr: string, num: bigint, label: string) {
     if (!MORAY_ADDRESS) return;
     setBusyLabel(label);
@@ -374,8 +380,12 @@ export function SafetyScreen({ onChange }: { onChange?: () => void }) {
                   : `Sweeps everything to ${shortAddress(safe)} and freezes the vault.`
           }
           action={
-            killConfirm && safeMatured ? (
-              <button className="btn btn-danger btn-sm" disabled={busy} onClick={killSwitch}>
+            killConfirm && safeMatured && configReady ? (
+              <button
+                className="btn btn-danger btn-sm"
+                disabled={busy || !configReady || !safeMatured}
+                onClick={killSwitch}
+              >
                 {busyLabel === 'kill' ? <span className="spinner-sm" /> : 'Confirm sweep'}
               </button>
             ) : (
