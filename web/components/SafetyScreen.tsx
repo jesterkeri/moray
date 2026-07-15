@@ -245,7 +245,7 @@ export function SafetyScreen({ onChange }: { onChange?: () => void }) {
           </button>
           <button
             className="btn btn-primary btn-sm"
-            disabled={busy || !pMatured}
+            disabled={busy || !pMatured || !configReady}
             onClick={() => simpleWrite('executeChange', 'apply')}
           >
             {busyLabel === 'apply' ? <span className="spinner-sm" /> : 'Apply'}
@@ -284,9 +284,14 @@ export function SafetyScreen({ onChange }: { onChange?: () => void }) {
                   disabled={busy}
                   autoFocus
                 />
-                {row.type === 'duration' && Number(editValue) > 0 && (
-                  <div className="set-hint" style={{ marginTop: 6 }}>= {formatDuration(Number(editValue))}</div>
-                )}
+                {row.type === 'duration' &&
+                  /^\d+$/.test(editValue) &&
+                  Number(editValue) > 0 &&
+                  Number(editValue) <= 315_360_000 && (
+                    <div className="set-hint" style={{ marginTop: 6 }}>
+                      = {formatDuration(Number(editValue))}
+                    </div>
+                  )}
                 {editError && (
                   <div style={{ color: 'var(--danger)', fontSize: 12.5, marginTop: 7 }}>{editError}</div>
                 )}
