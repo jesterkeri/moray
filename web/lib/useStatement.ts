@@ -43,11 +43,10 @@ export function useStatement(refreshKey?: number) {
       return;
     }
     let cancelled = false;
-    let latest = 0; // only the most-recently-STARTED load may commit its result
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
     const moray = MORAY_ADDRESS;
 
     const load = async (showLoading: boolean) => {
-      const seq = ++latest;
       if (showLoading) setLoading(true);
       const common = { address: moray, abi: morayAbi, fromBlock: FROM_BLOCK, toBlock: 'latest' as const };
       try {
@@ -111,13 +110,13 @@ export function useStatement(refreshKey?: number) {
 
         list.sort((a, b) => (a.blockNumber !== b.blockNumber ? (a.blockNumber < b.blockNumber ? 1 : -1) : b.logIndex - a.logIndex));
 
-        if (!cancelled && seq === latest) {
+        if (!cancelled) {
           setEntries(list);
           setError(false);
           setLoading(false);
         }
       } catch {
-        if (!cancelled && seq === latest) {
+        if (!cancelled) {
           setLoading(false);
           // Only a foreground load surfaces a hard error; a failed background retry
           // keeps the existing good data rather than blanking it.
@@ -126,12 +125,19 @@ export function useStatement(refreshKey?: number) {
       }
     };
 
-    load(true);
-    // One delayed retry catches RPC log-index lag right after an action bumps the key.
-    const retry = setTimeout(() => load(false), 3500);
+    // Run the foreground load, then ONE soft retry AFTER it completes (never
+    // overlapping), to catch RPC log-index lag right after an action bumps the key.
+    // Sequential = no stale/fresh race and no lost foreground result.
+    load(true).finally(() => {
+      if (!cancelled) {
+        retryTimer = setTimeout(() => {
+          if (!cancelled) load(false);
+        }, 3500);
+      }
+    });
     return () => {
       cancelled = true;
-      clearTimeout(retry);
+      if (retryTimer) clearTimeout(retryTimer);
     };
   }, [publicClient, address, refreshKey]);
 
