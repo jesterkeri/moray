@@ -11,7 +11,7 @@ import { ClockIcon, ArrowUpIcon } from './icons';
 export function WithdrawFlow({
   onDone,
 }: {
-  onDone: (info: { instant: boolean; seconds: number }) => void;
+  onDone: (info: { instant: boolean; seconds: number; known: boolean }) => void;
 }) {
   const { address } = useAccount();
   const [amountStr, setAmountStr] = useState('');
@@ -58,8 +58,9 @@ export function WithdrawFlow({
   useEffect(() => {
     if (!isSuccess || !receipt) return;
     // Truth from the emitted event: Withdrawn = instant, WithdrawRequested = delayed.
-    let instant = preview?.instant ?? false;
-    let seconds = preview?.seconds ?? 0;
+    let instant = false;
+    let seconds = 0;
+    let known = false;
     try {
       const logs = parseEventLogs({ abi: morayAbi, logs: receipt.logs });
       const withdrawn = logs.find((l) => l.eventName === 'Withdrawn');
@@ -67,15 +68,17 @@ export function WithdrawFlow({
       if (withdrawn) {
         instant = true;
         seconds = 0;
+        known = true;
       } else if (requested) {
         instant = false;
         const unlock = Number((requested.args as { unlockTime: bigint }).unlockTime);
         seconds = Math.max(0, unlock - Math.floor(Date.now() / 1000));
+        known = true;
       }
     } catch {
-      /* fall back to the preview */
+      known = false; // conservative fallback below, never the stale preview
     }
-    onDone({ instant, seconds });
+    onDone({ instant, seconds, known });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSuccess, receipt]);
 

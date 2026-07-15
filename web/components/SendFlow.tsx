@@ -22,7 +22,7 @@ function safeParseEther(v: string): bigint | null {
 export function SendFlow({
   onSent,
 }: {
-  onSent: (info: { to: string; amount: string; seconds: number }) => void;
+  onSent: (info: { to: string; amount: string; seconds: number; known: boolean }) => void;
 }) {
   const { address: from } = useAccount();
   const [to, setTo] = useState('');
@@ -90,17 +90,19 @@ export function SendFlow({
     if (!isSuccess || !receipt) return;
     // Report the ACTUAL on-chain window from the emitted event, not the preview.
     let seconds = 0;
+    let known = false;
     try {
       const logs = parseEventLogs({ abi: morayAbi, logs: receipt.logs, eventName: 'TransferCreated' });
       const created = logs[0];
       if (created) {
         const unlock = Number((created.args as { unlockTime: bigint }).unlockTime);
         seconds = Math.max(0, unlock - Math.floor(Date.now() / 1000));
+        known = true;
       }
     } catch {
-      seconds = clearing?.seconds ?? 0;
+      known = false; // fall back to a conservative "check Clearing" toast, never the stale preview
     }
-    onSent({ to, amount: amountStr, seconds });
+    onSent({ to, amount: amountStr, seconds, known });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSuccess, receipt]);
 

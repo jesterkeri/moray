@@ -117,13 +117,15 @@ export function Dashboard() {
       {panel === 'send' && (
         <Modal title="Send" onClose={() => setPanel(null)}>
           <SendFlow
-            onSent={({ seconds }) => {
+            onSent={({ seconds, known }) => {
               setPanel(null);
               refetchVault();
               setToast(
-                seconds === 0
-                  ? 'Sent — it clears instantly.'
-                  : `Sent. Clearing in ${formatDuration(seconds)} — recall it below any time.`,
+                !known
+                  ? 'Sent. Check Clearing below.'
+                  : seconds === 0
+                    ? 'Sent — it clears instantly.'
+                    : `Sent. Clearing in ${formatDuration(seconds)} — recall it below any time.`,
               );
             }}
           />
@@ -133,14 +135,16 @@ export function Dashboard() {
       {panel === 'withdraw' && (
         <Modal title="Withdraw" onClose={() => setPanel(null)}>
           <WithdrawFlow
-            onDone={({ instant, seconds }) => {
+            onDone={({ instant, seconds, known }) => {
               setPanel(null);
               refetchVault();
               refetchWallet();
               setToast(
-                instant
-                  ? 'Withdrawn to your wallet.'
-                  : `Withdrawal clearing in ${formatDuration(seconds)} — recall it below any time.`,
+                !known
+                  ? 'Submitted. Check Clearing below.'
+                  : instant
+                    ? 'Withdrawn to your wallet.'
+                    : `Withdrawal clearing in ${formatDuration(seconds)} — recall it below any time.`,
               );
             }}
           />

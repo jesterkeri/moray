@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAccount, useReadContract, useReadContracts, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { MORAY_ADDRESS, morayAbi, formatMon, shortAddress } from '@/lib/moray';
 import { monadTestnet } from '@/lib/chain';
@@ -43,29 +43,26 @@ export function PendingList({ onChange }: { onChange?: () => void }) {
 
   const { writeContract, data: hash, isPending } = useWriteContract();
   const [actingId, setActingId] = useState<bigint | null>(null);
-  const { isLoading: mining } = useWaitForTransactionReceipt({
+  const { isLoading: mining, isSuccess: confirmed } = useWaitForTransactionReceipt({
     hash,
-    query: {
-      enabled: Boolean(hash),
-      // refetch lists when the action confirms
-    },
+    query: { enabled: Boolean(hash) },
   });
+
+  // Refetch only once the action is actually MINED (not when the wallet returns a
+  // hash), so the row clears / balances update against confirmed on-chain state.
+  useEffect(() => {
+    if (!confirmed) return;
+    refetchIds();
+    refetchTransfers();
+    onChange?.();
+    setActingId(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [confirmed]);
 
   function act(id: bigint, fn: 'cancel' | 'claim' | 'reclaim') {
     if (!MORAY_ADDRESS) return;
     setActingId(id);
-    writeContract(
-      { address: MORAY_ADDRESS, abi: morayAbi, functionName: fn, args: [id], chainId: monadTestnet.id },
-      {
-        onSettled: () => {
-          setTimeout(() => {
-            refetchIds();
-            refetchTransfers();
-            onChange?.();
-          }, 1500);
-        },
-      },
-    );
+    writeContract({ address: MORAY_ADDRESS, abi: morayAbi, functionName: fn, args: [id], chainId: monadTestnet.id });
   }
 
   const rows = idList
