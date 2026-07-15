@@ -116,11 +116,29 @@ export function SafetyScreen({ onChange }: { onChange?: () => void }) {
     }
   }, [receiptFailed]);
 
-  // If readiness or the safe's maturity drops (account switch, query reset, read
-  // failure), drop any armed kill-switch confirm so a sweep can't fire on stale state.
+  // If readiness or the safe's maturity drops (query reset, read failure), drop any
+  // armed kill-switch confirm so a sweep can't fire on stale state.
   useEffect(() => {
     if (!configReady || !safeMatured) setKillConfirm(false);
   }, [configReady, safeMatured]);
+
+  // On account switch, wipe ALL transient state so a Save or armed Confirm can't
+  // act on the previous account's (or another account's) state.
+  useEffect(() => {
+    setEditing(null);
+    setEditValue('');
+    setEditError(null);
+    setKillConfirm(false);
+  }, [address]);
+
+  // Close an open edit form if readiness drops while it's mounted.
+  useEffect(() => {
+    if (!configReady) {
+      setEditing(null);
+      setEditValue('');
+      setEditError(null);
+    }
+  }, [configReady]);
 
   function requestChange(kind: number, addr: string, num: bigint, label: string) {
     if (!MORAY_ADDRESS) return;
@@ -168,6 +186,7 @@ export function SafetyScreen({ onChange }: { onChange?: () => void }) {
   }
 
   function saveEdit(kind: number, type: RowType) {
+    if (!configReady || hasPending) return; // never submit against stale/pending state
     setEditError(null);
     if (type === 'address') {
       if (!isAddress(editValue)) return setEditError('Enter a valid address.');
@@ -304,7 +323,7 @@ export function SafetyScreen({ onChange }: { onChange?: () => void }) {
                 <div className="row gap-2" style={{ marginTop: 10 }}>
                   <button
                     className="btn btn-primary btn-sm"
-                    disabled={busy}
+                    disabled={busy || !configReady || hasPending}
                     onClick={() => saveEdit(row.kind, row.type)}
                   >
                     {busyLabel === KIND_LABEL[row.kind] ? <span className="spinner-sm" /> : 'Save'}
