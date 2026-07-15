@@ -705,6 +705,30 @@ contract MorayVaultTest is Test {
         assertEq(safe.balance, safeBefore + 1 ether);
     }
 
+    /// Exact maturity boundary: reverts at safeSetAt + configDelay - 1, succeeds
+    /// at exactly safeSetAt + configDelay (the `>=` boundary).
+    function test_KillSwitchSafeMaturityBoundary() public {
+        uint64 setAt = uint64(block.timestamp);
+        _setSafe(alice, safe); // stamped at setAt
+        _deposit(alice, 1 ether);
+
+        vm.warp(setAt + CONFIG_DELAY - 1);
+        vm.prank(alice);
+        vm.expectRevert(bytes("safe not matured"));
+        vault.killSwitch(alice);
+
+        vm.warp(setAt + CONFIG_DELAY); // exactly matured
+        uint256 safeBefore = safe.balance;
+        vm.prank(alice);
+        vault.killSwitch(alice);
+        assertEq(safe.balance, safeBefore + 1 ether);
+    }
+
+    function test_ConstructorRejectsOversizedDelay() public {
+        vm.expectRevert(bytes("delay too large"));
+        new MorayVault(MIN_DELAY, uint64(366 days), VETO_DELAY, WITHDRAW_DELAY, RECLAIM_GRACE);
+    }
+
     /// Pre-position attack (compromised-at-setup): a stolen signer sets a malicious
     /// safe while the vault is empty. The maturity gate blocks the opportunistic
     /// same-session sweep; a PATIENT attacker who waits out maturity can still

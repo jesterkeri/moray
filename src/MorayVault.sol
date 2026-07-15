@@ -159,6 +159,11 @@ contract MorayVault {
     ///         allowance is measured and refills.
     uint64 public constant INSTANT_WINDOW = 1 days;
 
+    /// @notice Upper bound on every constructor delay, so `block.timestamp + delay`
+    ///         can never approach uint64 overflow (defensive; sane values are
+    ///         seconds-to-hours).
+    uint64 public constant MAX_DELAY = 365 days;
+
     /// @notice Minimum clearing window forced on any never-before-cleared payee.
     uint64 public immutable minNewPayeeDelay;
     /// @notice Delay for powerful config changes and for unfreeze.
@@ -222,6 +227,11 @@ contract MorayVault {
         uint64 _withdrawDelay,
         uint64 _reclaimGrace
     ) {
+        require(
+            _minNewPayeeDelay <= MAX_DELAY && _configDelay <= MAX_DELAY && _inheritanceVetoDelay <= MAX_DELAY
+                && _withdrawDelay <= MAX_DELAY && _reclaimGrace <= MAX_DELAY,
+            "delay too large"
+        );
         minNewPayeeDelay = _minNewPayeeDelay;
         configDelay = _configDelay;
         inheritanceVetoDelay = _inheritanceVetoDelay;
