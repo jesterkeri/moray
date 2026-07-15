@@ -12,6 +12,7 @@ const GAS_BUFFER = parseEther('0.01');
 export function DepositFlow({ onDone }: { onDone: (info: { amount: string }) => void }) {
   const { address } = useAccount();
   const [amountStr, setAmountStr] = useState('');
+  const [submittedAmount, setSubmittedAmount] = useState('');
 
   const { data: wallet } = useBalance({ address, query: { enabled: Boolean(address) } });
 
@@ -23,18 +24,20 @@ export function DepositFlow({ onDone }: { onDone: (info: { amount: string }) => 
   const overBalance = amtWei !== null && walletValue !== undefined && amtWei > walletValue;
   const validAmt = amtWei !== null && amtWei > 0n && !overBalance;
   const busy = isPending || mining;
-  const canSubmit = Boolean(address) && Boolean(MORAY_ADDRESS) && validAmt && !busy;
+  const canSubmit =
+    Boolean(address) && Boolean(MORAY_ADDRESS) && validAmt && walletValue !== undefined && !busy;
 
   const maxDeposit =
     walletValue !== undefined && walletValue > GAS_BUFFER ? walletValue - GAS_BUFFER : 0n;
 
   useEffect(() => {
-    if (isSuccess) onDone({ amount: amountStr });
+    if (isSuccess) onDone({ amount: submittedAmount });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSuccess]);
 
   function submit() {
     if (!canSubmit || amtWei === null || !MORAY_ADDRESS) return;
+    setSubmittedAmount(amountStr); // snapshot for the toast; input can't change while busy
     writeContract({
       address: MORAY_ADDRESS,
       abi: morayAbi,
@@ -59,6 +62,7 @@ export function DepositFlow({ onDone }: { onDone: (info: { amount: string }) => 
             inputMode="decimal"
             value={amountStr}
             onChange={(e) => setAmountStr(e.target.value)}
+            disabled={busy}
           />
           <span className="amount-suffix">MON</span>
         </div>

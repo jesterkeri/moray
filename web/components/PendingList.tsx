@@ -98,8 +98,11 @@ export function PendingList({ onChange }: { onChange?: () => void }) {
           const grace = reclaimGrace !== undefined ? Number(reclaimGrace) : Infinity;
           const remaining = now > 0 ? row.unlock - now : row.unlock;
           const graceRemaining = now > 0 ? row.unlock + grace - now : Infinity;
+          // A self-withdrawal (to == from) can always be claimed to the owner's
+          // own wallet, so it never becomes "stuck"; only external sends to a
+          // rejecting recipient reach the Reclaim phase.
           const phase: 'clearing' | 'grace' | 'stuck' =
-            remaining > 0 ? 'clearing' : graceRemaining > 0 ? 'grace' : 'stuck';
+            remaining > 0 ? 'clearing' : row.isSelf || graceRemaining > 0 ? 'grace' : 'stuck';
           const actingThis = busy && actingId === row.id;
           return (
             <div className="pending-row" key={row.id.toString()}>

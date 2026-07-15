@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { isAddress, parseEther } from 'viem';
+import { isAddress, parseEther, parseEventLogs } from 'viem';
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { MORAY_ADDRESS, morayAbi, formatMon } from '@/lib/moray';
 import { monadTestnet } from '@/lib/chain';
@@ -60,7 +60,7 @@ export function SendFlow({
   const { verdict, loading: riskLoading } = useRecipientRisk(to);
 
   const { writeContract, data: hash, isPending, error: writeError } = useWriteContract();
-  const { isLoading: mining, isSuccess } = useWaitForTransactionReceipt({ hash });
+  const { data: receipt, isLoading: mining, isSuccess } = useWaitForTransactionReceipt({ hash });
 
   const amtWei = safeParseEther(amountStr);
   const isSelf = Boolean(from && isAddress(to) && to.toLowerCase() === from.toLowerCase());
@@ -87,17 +87,35 @@ export function SendFlow({
   }, [validTo, validAmt, amtWei, minDelay, withdrawDelay, remaining, verdict]);
 
   useEffect(() => {
-    if (isSuccess) {
-      onSent({ to, amount: amountStr, seconds: clearing?.seconds ?? 0 });
+    if (!isSuccess || !receipt) return;
+    // Report the ACTUAL on-chain window from the emitted event, not the preview.
+    let seconds = 0;
+    try {
+      const logs = parseEventLogs({ abi: morayAbi, logs: receipt.logs, eventName: 'TransferCreated' });
+      const created = logs[0];
+      if (created) {
+        const unlock = Number((created.args as { unlockTime: bigint }).unlockTime);
+        seconds = Math.max(0, unlock - Math.floor(Date.now() / 1000));
+      }
+    } catch {
+      seconds = clearing?.seconds ?? 0;
     }
+    onSent({ to, amount: amountStr, seconds });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSuccess]);
+  }, [isSuccess, receipt]);
 
   const busy = isPending || mining;
-  // Only allow send once the recipient has been assessed and the window preview
-  // is resolved, so the user never sends without seeing what will actually happen.
+  // Only allow send once the recipient has been assessed, the window preview is
+  // resolved, and the balance is known, so the user never sends blind or oversized.
   const canSend =
-    enabled && validTo && validAmt && !busy && clearing !== null && !riskLoading && verdict !== null;
+    enabled &&
+    validTo &&
+    validAmt &&
+    vaultBalance !== undefined &&
+    !busy &&
+    clearing !== null &&
+    !riskLoading &&
+    verdict !== null;
 
   function submit() {
     if (!canSend || amtWei === null || !MORAY_ADDRESS) return;
@@ -124,6 +142,7 @@ export function SendFlow({
           onChange={(e) => setTo(e.target.value.trim())}
           spellCheck={false}
           autoComplete="off"
+          disabled={busy}
         />
         {isSelf && <FieldError>Use Withdraw to move funds to your own wallet.</FieldError>}
       </div>
@@ -156,6 +175,7 @@ export function SendFlow({
             inputMode="decimal"
             value={amountStr}
             onChange={(e) => setAmountStr(e.target.value)}
+            disabled={busy}
           />
           <span className="amount-suffix">MON</span>
         </div>

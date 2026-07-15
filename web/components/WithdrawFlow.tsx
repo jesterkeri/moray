@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { parseEventLogs } from 'viem';
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { MORAY_ADDRESS, morayAbi, formatMon, parseMon } from '@/lib/moray';
 import { monadTestnet } from '@/lib/chain';
@@ -38,7 +39,7 @@ export function WithdrawFlow({
   });
 
   const { writeContract, data: hash, isPending, error: writeError } = useWriteContract();
-  const { isLoading: mining, isSuccess } = useWaitForTransactionReceipt({ hash });
+  const { data: receipt, isLoading: mining, isSuccess } = useWaitForTransactionReceipt({ hash });
 
   const amtWei = parseMon(amountStr);
   const overBalance = amtWei !== null && vaultBalance !== undefined && amtWei > (vaultBalance as bigint);
@@ -52,12 +53,31 @@ export function WithdrawFlow({
   }, [validAmt, amtWei, remaining, withdrawDelay]);
 
   const busy = isPending || mining;
-  const canSubmit = enabled && validAmt && !busy && preview !== null;
+  const canSubmit = enabled && validAmt && vaultBalance !== undefined && !busy && preview !== null;
 
   useEffect(() => {
-    if (isSuccess) onDone({ instant: preview?.instant ?? false, seconds: preview?.seconds ?? 0 });
+    if (!isSuccess || !receipt) return;
+    // Truth from the emitted event: Withdrawn = instant, WithdrawRequested = delayed.
+    let instant = preview?.instant ?? false;
+    let seconds = preview?.seconds ?? 0;
+    try {
+      const logs = parseEventLogs({ abi: morayAbi, logs: receipt.logs });
+      const withdrawn = logs.find((l) => l.eventName === 'Withdrawn');
+      const requested = logs.find((l) => l.eventName === 'WithdrawRequested');
+      if (withdrawn) {
+        instant = true;
+        seconds = 0;
+      } else if (requested) {
+        instant = false;
+        const unlock = Number((requested.args as { unlockTime: bigint }).unlockTime);
+        seconds = Math.max(0, unlock - Math.floor(Date.now() / 1000));
+      }
+    } catch {
+      /* fall back to the preview */
+    }
+    onDone({ instant, seconds });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSuccess]);
+  }, [isSuccess, receipt]);
 
   function submit() {
     if (!canSubmit || amtWei === null || !MORAY_ADDRESS) return;
@@ -85,6 +105,7 @@ export function WithdrawFlow({
             inputMode="decimal"
             value={amountStr}
             onChange={(e) => setAmountStr(e.target.value)}
+            disabled={busy}
           />
           <span className="amount-suffix">MON</span>
         </div>

@@ -94,7 +94,12 @@ export function Dashboard() {
         </div>
       </section>
 
-      <PendingList onChange={() => refetchVault()} />
+      <PendingList
+        onChange={() => {
+          refetchVault();
+          refetchWallet();
+        }}
+      />
 
       {panel === 'deposit' && (
         <Modal title="Deposit" onClose={() => setPanel(null)}>
