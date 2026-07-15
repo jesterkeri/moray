@@ -6,17 +6,18 @@ _Last updated: session before the morning resume (Monad Spark hackathon build)._
 
 ## ▶ RESUME HERE (do this first next session)
 
-Contract + tests DONE (68 green, Codex r1 + r2 addressed). Next:
+Contract DONE and **Codex-SHIP'd** (r1→r2→r3→r4, 74 tests green). Next:
 
-1. **Codex r3** on the r2 fixes (unified send/withdraw egress policy so send()
-   can't bypass the limit; safe-address empty-gate; rejecting safe/heir doc;
-   lint). Prompt draft at `%TEMP%\moray-codex-r3.md`. Triage → fix → until SHIP.
-2. **Deploy `MorayVault` to Monad testnet** (`forge script`, key from env, never
-   committed). Deploy params: `withdrawDelay >= minNewPayeeDelay`, both a
-   meaningful fraud-reaction window. Record the address in SPEC + README; verify
-   one on-chain round-trip.
-3. **Scaffold Next.js + Privy** (auth + embedded wallet on Monad testnet), wire
+1. **Deploy `MorayVault` to Monad testnet.** `script/Deploy.s.sol` is ready
+   (demo-short delays, enforces `withdrawDelay >= minNewPayeeDelay`). Run:
+   `forge script script/Deploy.s.sol:Deploy --rpc-url monad_testnet
+   --private-key $DEPLOYER_KEY --broadcast` with `MONAD_TESTNET_RPC` set (chain
+   10143) and a deployer key funded with testnet MON. Record the address here +
+   in README; verify one on-chain round-trip.
+2. **Scaffold Next.js + Privy** (auth + embedded wallet on Monad testnet), wire
    the deployed address + ABI, then the recipient-risk read.
+3. (Optional) Codex r5 on the r4 follow-up (constructor delay bound + boundary
+   test) at `%TEMP%\moray-codex-r5.md` — trivial, Codex already SHIP'd r4.
 
 See `BUILD_PLAN.md` for the full day-by-day. Commits are landing in-window.
 
