@@ -20,6 +20,8 @@ import {
 } from './icons';
 import { Modal } from './Modal';
 import { SendFlow } from './SendFlow';
+import { DepositFlow } from './DepositFlow';
+import { WithdrawFlow } from './WithdrawFlow';
 import { PendingList } from './PendingList';
 
 type Panel = 'deposit' | 'send' | 'withdraw' | 'safety' | null;
@@ -43,7 +45,7 @@ export function Dashboard() {
     query: { enabled: Boolean(address) && configured, refetchInterval: 8000 },
   });
 
-  const { data: walletBalance } = useBalance({
+  const { data: walletBalance, refetch: refetchWallet } = useBalance({
     address,
     query: { enabled: Boolean(address) },
   });
@@ -94,6 +96,19 @@ export function Dashboard() {
 
       <PendingList onChange={() => refetchVault()} />
 
+      {panel === 'deposit' && (
+        <Modal title="Deposit" onClose={() => setPanel(null)}>
+          <DepositFlow
+            onDone={({ amount }) => {
+              setPanel(null);
+              refetchVault();
+              refetchWallet();
+              setToast(`Deposited ${amount} MON into your safe.`);
+            }}
+          />
+        </Modal>
+      )}
+
       {panel === 'send' && (
         <Modal title="Send" onClose={() => setPanel(null)}>
           <SendFlow
@@ -110,9 +125,24 @@ export function Dashboard() {
         </Modal>
       )}
 
-      {panel && panel !== 'send' && (
-        <FlowPlaceholder panel={panel} onClose={() => setPanel(null)} />
+      {panel === 'withdraw' && (
+        <Modal title="Withdraw" onClose={() => setPanel(null)}>
+          <WithdrawFlow
+            onDone={({ instant, seconds }) => {
+              setPanel(null);
+              refetchVault();
+              refetchWallet();
+              setToast(
+                instant
+                  ? 'Withdrawn to your wallet.'
+                  : `Withdrawal clearing in ${formatDuration(seconds)} — recall it below any time.`,
+              );
+            }}
+          />
+        </Modal>
       )}
+
+      {panel === 'safety' && <FlowPlaceholder panel="safety" onClose={() => setPanel(null)} />}
 
       <section className="section">
         <div className="section-head">

@@ -32,6 +32,16 @@ export function toWei(mon: string): bigint {
   return parseEther(mon as `${number}`);
 }
 
+/** Parse a MON string to wei, or null if malformed (rejects negatives, e-notation). */
+export function parseMon(v: string): bigint | null {
+  if (!v || !/^\d*\.?\d*$/.test(v)) return null;
+  try {
+    return parseEther(v as `${number}`);
+  } catch {
+    return null;
+  }
+}
+
 /** Short 0x1234…abcd form for display. */
 export function shortAddress(addr?: string): string {
   if (!addr) return '';
