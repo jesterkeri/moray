@@ -1,0 +1,19 @@
+# Foundry
+out/
+cache/
+broadcast/
+!broadcast/**/dry-run/
+
+# Node / frontend (added later)
+node_modules/
+.next/
+dist/
+
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+
+# OS / editor
+.DS_Store
+Thumbs.db
