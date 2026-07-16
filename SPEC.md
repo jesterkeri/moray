@@ -4,20 +4,26 @@ _Last updated: session before the morning resume (Monad Spark hackathon build)._
 
 ---
 
-## ▶ RESUME HERE (do this first next session)
+## ▶ DEPLOYED (Monad testnet, chain 10143)
 
-Contract DONE and **Codex-SHIP'd** (r1→r2→r3→r4, 74 tests green). Next:
+**`MorayVault` = `0x12CA0E45F5B227CFe5aCcad2550CA3e91e76caCd`**
+Deploy tx `0xa87ed5a41bd1418738ef447a51dd53ec250c24e5673f0af3b10c9c5dfe8dca2f`,
+block **45465915**. Verified live by reading the immutables back over RPC:
+`minNewPayeeDelay=60, configDelay=120, inheritanceVetoDelay=120,
+withdrawDelay=90, reclaimGrace=600`. No owner, no admin — the deployer holds no
+privileges over the vault.
 
-1. **Deploy `MorayVault` to Monad testnet.** `script/Deploy.s.sol` is ready
-   (demo-short delays, enforces `withdrawDelay >= minNewPayeeDelay`). Run:
-   `forge script script/Deploy.s.sol:Deploy --rpc-url monad_testnet
-   --private-key $DEPLOYER_KEY --broadcast` with `MONAD_TESTNET_RPC` set (chain
-   10143) and a deployer key funded with testnet MON. Record the address here +
-   in README; verify one on-chain round-trip.
-2. **Scaffold Next.js + Privy** (auth + embedded wallet on Monad testnet), wire
-   the deployed address + ABI, then the recipient-risk read.
-3. (Optional) Codex r5 on the r4 follow-up (constructor delay bound + boundary
-   test) at `%TEMP%\moray-codex-r5.md` — trivial, Codex already SHIP'd r4.
+Contract **Codex-SHIP'd** (r1→r5, 74 tests green). Frontend **Codex-SHIP'd**
+(14 web rounds, all 5 flows). Set `NEXT_PUBLIC_MORAY_FROM_BLOCK=45465915` so the
+Activity view does not scan from block 0.
+
+### Remaining to submit (by Jul 19 23:59 UTC)
+
+1. Privy app id → `NEXT_PUBLIC_PRIVY_APP_ID`; add the live origin to Privy's
+   allowed domains (this is what gates login, not the onboarding "website" field).
+2. Push repo public; deploy `web/` to Vercel; fill the README "Live app" slot.
+3. One live on-chain round-trip through the UI (the AI judge checks live data).
+4. Demo video < 3 min; submit.
 
 See `BUILD_PLAN.md` for the full day-by-day. Commits are landing in-window.
 

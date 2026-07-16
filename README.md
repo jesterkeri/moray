@@ -105,8 +105,24 @@ Moray is built security-first, and its guarantees are stated honestly.
 
 ## Deployment
 
-- **Contract (Monad testnet):** `TBA` (filled on deploy)
+- **Contract (Monad testnet):** [`0x12CA0E45F5B227CFe5aCcad2550CA3e91e76caCd`](https://testnet.monadexplorer.com/address/0x12CA0E45F5B227CFe5aCcad2550CA3e91e76caCd)
+- **Deploy tx:** [`0xa87ed5a4...dca2f`](https://testnet.monadexplorer.com/tx/0xa87ed5a41bd1418738ef447a51dd53ec250c24e5673f0af3b10c9c5dfe8dca2f) (block 45465915)
 - **Live app:** `TBA` (filled on deploy)
+
+There is no owner and no admin. The deployer holds no privileges over the vault
+once it is live: every control is keyed per user, and the constructor only sets
+the delay immutables below.
+
+**Deployed delays.** These are deliberately short so every mechanic is visible
+in a live demo. Production values would be much longer.
+
+| Delay | Deployed | Production would be |
+| --- | --- | --- |
+| New-payee hold | 60s | ~1h |
+| Large-exit (anti-drain) window | 90s | ~1h |
+| Config change / safe maturity / unfreeze | 120s | ~24-48h |
+| Inheritance veto | 120s | ~7d |
+| Unclaimed-transfer reclaim grace | 600s | ~1-7d |
 
 ## Run it locally
 
