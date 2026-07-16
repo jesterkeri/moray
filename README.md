@@ -107,7 +107,7 @@ Moray is built security-first, and its guarantees are stated honestly.
 
 - **Contract (Monad testnet):** [`0x12CA0E45F5B227CFe5aCcad2550CA3e91e76caCd`](https://testnet.monadexplorer.com/address/0x12CA0E45F5B227CFe5aCcad2550CA3e91e76caCd)
 - **Deploy tx:** [`0xa87ed5a4...dca2f`](https://testnet.monadexplorer.com/tx/0xa87ed5a41bd1418738ef447a51dd53ec250c24e5673f0af3b10c9c5dfe8dca2f) (block 45465915)
-- **Live app:** `TBA` (filled on deploy)
+- **Live app:** https://moray-three.vercel.app
 
 There is no owner and no admin. The deployer holds no privileges over the vault
 once it is live: every control is keyed per user, and the constructor only sets
