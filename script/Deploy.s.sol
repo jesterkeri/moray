@@ -6,13 +6,23 @@ import {MorayVault} from "../src/MorayVault.sol";
 
 /// @notice Deploys MorayVault to Monad testnet.
 ///
-/// Run (deployer key from an env var, NEVER committed):
+/// Use an encrypted keystore, NOT a raw --private-key: a key passed as a CLI
+/// argument lands in shell history and the process list. Create one once
+/// (prompts for a password, prints only the address):
+///   cast wallet new ~/.foundry/keystores moray-deployer
+///
+/// Then deploy:
 ///   forge script script/Deploy.s.sol:Deploy \
-///     --rpc-url $MONAD_TESTNET_RPC \
-///     --private-key $DEPLOYER_KEY \
+///     --rpc-url monad_testnet \
+///     --account moray-deployer --sender <DEPLOYER_ADDRESS> \
 ///     --broadcast
 ///
-/// The deployer address needs testnet MON for gas (Monad testnet faucet).
+/// Set MONAD_TESTNET_RPC in the env (see foundry.toml [rpc_endpoints]).
+/// The deployer address needs testnet MON for gas (faucet.monad.xyz).
+///
+/// The deployer gets NO privileges: MorayVault has no owner and no admin, and
+/// this constructor only sets the delay immutables. Once deployed, the key that
+/// deployed it is powerless over the vault.
 contract Deploy is Script {
     // Demo (testnet) delays — deliberately SHORT so every mechanic is visible in a
     // live 3-minute demo. Production would use much longer, meaningful windows.

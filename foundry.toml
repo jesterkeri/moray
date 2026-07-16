@@ -11,7 +11,10 @@ optimizer_runs = 200
 # Set MONAD_TESTNET_RPC in your env (e.g. https://testnet-rpc.monad.xyz).
 monad_testnet = "${MONAD_TESTNET_RPC}"
 
-# Deploy (key from an env var, never commit it):
-#   forge script script/Deploy.s.sol:Deploy \
-#     --rpc-url monad_testnet --private-key $DEPLOYER_KEY --broadcast
+# Deploy with an encrypted keystore, never a raw --private-key (a key in a CLI
+# arg lands in shell history and the process list):
+#   cast wallet new ~/.foundry/keystores moray-deployer
+#   forge script script/Deploy.s.sol:Deploy --rpc-url monad_testnet \
+#     --account moray-deployer --sender <DEPLOYER_ADDRESS> --broadcast
 # Monad testnet chain id: 10143. Deployer needs testnet MON for gas.
+# See script/Deploy.s.sol for why the deployer holds no privileges afterwards.
