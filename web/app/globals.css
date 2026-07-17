@@ -5,69 +5,82 @@
    ============================================================================ */
 
 :root {
-  /* Light theme */
-  --bg: #f5f7f7;
-  --bg-tint: radial-gradient(1200px 600px at 50% -10%, #eef3f2 0%, #f5f7f7 60%);
-  --surface: #ffffff;
-  --surface-2: #f1f4f4;
-  --surface-3: #e8ecec;
-  --border: #e3e8e8;
-  --border-strong: #d2d9d9;
-  --text: #0d1213;
-  --text-muted: #5c676c;
-  --text-faint: #8a9599;
+  /* Light theme — steel-bone instrument paper (cooler + greyer than cream,
+     the way a blueprint or a machinist's plate reads, not editorial linen). */
+  --bg: #e4e1d8;
+  --surface: #f3f1ea;
+  --surface-2: #eae7dd;
+  --surface-3: #e0ddd1;
+  --border: #d3cfc1;
+  --border-strong: #bdb8a7;
+  --text: #1b1c1a;
+  --text-muted: #5c5a50;
+  --text-faint: #86837a;
 
-  --accent: #0c9c8a;
-  --accent-hover: #0a8a7a;
-  --accent-soft: rgba(12, 156, 138, 0.1);
-  --accent-contrast: #ffffff;
+  /* Brass — the metal of a time-lock movement. Darkened for contrast on bone. */
+  --accent: #8f6511;
+  --accent-hover: #79550c;
+  --accent-soft: rgba(143, 101, 17, 0.12);
+  --accent-contrast: #f7f4ec;
 
-  --danger: #d92d36;
-  --danger-soft: rgba(217, 45, 54, 0.1);
-  --warning: #b9760f;
-  --warning-soft: rgba(185, 118, 15, 0.12);
-  --success: #0c9c8a;
+  /* Oxblood — the threat side of the ledger. */
+  --danger: #9c2f28;
+  --danger-soft: rgba(156, 47, 40, 0.1);
+  --warning: #935316;
+  --warning-soft: rgba(147, 83, 22, 0.12);
+  /* Patina — oxidized brass reads as "cleared / safe". */
+  --success: #3c7a5f;
 
-  --shadow-sm: 0 1px 2px rgba(16, 24, 28, 0.06), 0 1px 1px rgba(16, 24, 28, 0.04);
-  --shadow-md: 0 8px 24px -10px rgba(16, 24, 28, 0.18), 0 2px 6px rgba(16, 24, 28, 0.06);
-  --shadow-lg: 0 24px 60px -20px rgba(16, 24, 28, 0.28);
+  --shadow-sm: 0 1px 2px rgba(30, 26, 16, 0.07), 0 1px 1px rgba(30, 26, 16, 0.04);
+  --shadow-md: 0 8px 24px -10px rgba(30, 26, 16, 0.2), 0 2px 6px rgba(30, 26, 16, 0.07);
+  --shadow-lg: 0 24px 60px -20px rgba(30, 26, 16, 0.3);
 
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 16px;
-  --radius-xl: 22px;
-  --radius-full: 999px;
+  /* Flat design: no rounded corners anywhere. */
+  --radius-sm: 0;
+  --radius-md: 0;
+  --radius-lg: 0;
+  --radius-xl: 0;
+  --radius-full: 0;
 
-  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
-  --font-mono: var(--font-geist-mono), ui-monospace, "SF Mono", monospace;
+  /* one page width + gutter for the whole app, so the bar and content align */
+  --page-max: 1760px;
+  --page-pad: clamp(16px, 2.4vw, 32px);
+
+  --font-display: var(--font-archivo), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-hanken), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, "SF Mono", monospace;
 }
 
 [data-theme='dark'] {
-  --bg: #090b0c;
-  --bg-tint: radial-gradient(1200px 620px at 50% -12%, #10201d 0%, #090b0c 58%);
-  --surface: #121618;
-  --surface-2: #191e20;
-  --surface-3: #222829;
-  --border: #262d2f;
-  --border-strong: #333b3e;
-  --text: #eceff0;
-  --text-muted: #96a0a4;
-  --text-faint: #6a747a;
+  /* Pure black, flat. Panels read as slightly-raised cells on the black grid. */
+  --bg: #000000;
+  --surface: #0e0f12;
+  --surface-2: #17181c;
+  --surface-3: #1f2126;
+  --border: #2a2d33;
+  --border-strong: #3d424a;
+  /* Bone — warm off-white, paper under lamplight, not clinical #fff. */
+  --text: #ece7db;
+  --text-muted: #9a9488;
+  --text-faint: #6c6960;
 
-  --accent: #1ac9b1;
-  --accent-hover: #34d5c0;
-  --accent-soft: rgba(26, 201, 177, 0.12);
-  --accent-contrast: #04120f;
+  /* Brass on steel. */
+  --accent: #cb9a3a;
+  --accent-hover: #dcab49;
+  --accent-soft: rgba(203, 154, 58, 0.13);
+  --accent-contrast: #191307;
 
-  --danger: #f26069;
-  --danger-soft: rgba(242, 96, 105, 0.14);
-  --warning: #e8a13c;
-  --warning-soft: rgba(232, 161, 60, 0.14);
-  --success: #1ac9b1;
+  /* Oxblood, brightened enough to read on graphite. */
+  --danger: #d75750;
+  --danger-soft: rgba(215, 87, 80, 0.14);
+  --warning: #d1893f;
+  --warning-soft: rgba(209, 137, 63, 0.14);
+  /* Verdigris — aged brass. */
+  --success: #5fa483;
 
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow-md: 0 10px 30px -12px rgba(0, 0, 0, 0.6), 0 2px 8px rgba(0, 0, 0, 0.35);
-  --shadow-lg: 0 30px 70px -24px rgba(0, 0, 0, 0.7);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.45);
+  --shadow-md: 0 10px 30px -12px rgba(0, 0, 0, 0.62), 0 2px 8px rgba(0, 0, 0, 0.38);
+  --shadow-lg: 0 30px 70px -24px rgba(0, 0, 0, 0.72);
 }
 
 /* --- reset ------------------------------------------------------------------ */
@@ -86,15 +99,20 @@ html {
 }
 
 body {
-  background: var(--bg);
-  background-image: var(--bg-tint);
-  background-attachment: fixed;
+  /* Flat. Pure background, no texture. Structure comes from the grid lines. */
+  background-color: var(--bg);
   color: var(--text);
   font-family: var(--font-sans);
   font-size: 15px;
   line-height: 1.5;
   letter-spacing: -0.011em;
   min-height: 100dvh;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
 }
 
 a {
@@ -316,21 +334,25 @@ button {
   position: sticky;
   top: 0;
   z-index: 20;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  height: 64px;
-  padding: 0 22px;
   border-bottom: 1px solid var(--border);
   background: color-mix(in srgb, var(--bg) 82%, transparent);
   backdrop-filter: saturate(140%) blur(12px);
 }
+.moray-topbar-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 64px;
+  max-width: var(--page-max);
+  margin: 0 auto;
+  padding: 0 var(--page-pad);
+}
 
 .moray-container {
   width: 100%;
-  max-width: 900px;
+  max-width: var(--page-max);
   margin: 0 auto;
-  padding: 34px 22px 80px;
+  padding: 34px var(--page-pad) 80px;
 }
 
 /* --- balance hero ----------------------------------------------------------- */
@@ -344,8 +366,10 @@ button {
   margin-top: 8px;
 }
 .hero-number {
-  font-size: 46px;
-  font-weight: 600;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 44px;
+  font-weight: 500;
   letter-spacing: -0.03em;
   line-height: 1;
 }
@@ -429,59 +453,598 @@ button {
 
 /* --- landing ---------------------------------------------------------------- */
 .landing {
-  max-width: 640px;
+  max-width: var(--page-max);
   margin: 0 auto;
-  padding: 72px 22px;
-  text-align: center;
+  padding: clamp(16px, 2.4vh, 28px) var(--page-pad) 80px;
+}
+/* the hero is a full-bleed bordered band, split by a hairline, corner-anchored */
+.landing-hero {
+  display: grid;
+  grid-template-columns: 1.15fr 0.85fr;
+  border: 1px solid var(--border);
+}
+.landing-copy {
+  position: relative;
+  overflow: hidden;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: clamp(28px, 3.4vw, 56px);
+  border-right: 1px solid var(--border);
+}
+/* gold sweeps in from the left on hover — a flip, not a fade */
+.landing-copy::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--accent);
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform 260ms cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 0;
+}
+.landing-copy:hover::before {
+  transform: scaleX(1);
+}
+.landing-copy > * {
+  position: relative;
+  z-index: 1;
+}
+.landing-copy:hover .landing-eyebrow,
+.landing-copy:hover .landing-eyebrow .idx,
+.landing-copy:hover h1,
+.landing-copy:hover h1 .accent-word,
+.landing-copy:hover p.lede {
+  color: var(--accent-contrast);
+}
+.landing-copy:hover .landing-eyebrow .rule {
+  background: rgba(0, 0, 0, 0.4);
+}
+.landing-copy:hover .bracket-btn,
+.landing-copy:hover .bracket-btn.primary,
+.landing-copy:hover .bracket-btn:hover {
+  color: var(--accent-contrast);
+}
+.landing-copy:hover .bracket-btn::before,
+.landing-copy:hover .bracket-btn::after,
+.landing-copy:hover .bracket-btn.primary::before,
+.landing-copy:hover .bracket-btn.primary::after,
+.landing-copy:hover .bracket-btn:hover::before,
+.landing-copy:hover .bracket-btn:hover::after {
+  border-color: rgba(0, 0, 0, 0.55);
 }
 .landing h1 {
-  font-size: 46px;
-  font-weight: 600;
+  font-size: clamp(40px, 5.2vw, 74px);
+  font-weight: 800;
   letter-spacing: -0.035em;
-  line-height: 1.04;
-  margin: 20px 0 16px;
+  line-height: 0.98;
+  margin: clamp(22px, 3vw, 40px) 0 auto;
+  text-wrap: balance;
+  transition: color 300ms ease;
+}
+.landing h1 .accent-word {
+  color: var(--accent);
+  transition: color 300ms ease;
 }
 .landing p.lede {
-  font-size: 17px;
+  font-size: clamp(15px, 1.3vw, 16.5px);
   color: var(--text-muted);
-  max-width: 480px;
-  margin: 0 auto 30px;
+  margin: clamp(24px, 3vw, 40px) 0 28px;
   line-height: 1.55;
+  max-width: 46ch;
+  transition: color 300ms ease;
 }
-.landing-points {
-  display: grid;
-  gap: 10px;
-  max-width: 440px;
-  margin: 38px auto 0;
-  text-align: left;
-}
-.point {
+.hero-demo {
   display: flex;
-  gap: 12px;
-  align-items: flex-start;
-  padding: 14px 16px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  align-items: center;
+  justify-content: center;
+  padding: clamp(24px, 2.6vw, 40px);
 }
-.point-icon {
-  display: grid;
-  place-items: center;
-  width: 30px;
-  height: 30px;
-  flex-shrink: 0;
-  border-radius: var(--radius-full);
-  background: var(--accent-soft);
+.hero-demo .vault-panel {
+  width: 100%;
+  border: none;
+}
+.hero-demo .vault-panel::before,
+.hero-demo .vault-panel::after {
+  display: none;
+}
+.landing-cta {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+/* FERRO-style bracket controls: [ label ] framed by corner brackets */
+.bracket-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 52px;
+  padding: 0 30px;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.005em;
+  color: var(--text);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: color 120ms ease;
+}
+.bracket-btn::before,
+.bracket-btn::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 9px;
+  border-top: 1px solid var(--border-strong);
+  border-bottom: 1px solid var(--border-strong);
+  transition: border-color 120ms ease;
+}
+.bracket-btn::before {
+  left: 0;
+  border-left: 1px solid var(--border-strong);
+}
+.bracket-btn::after {
+  right: 0;
+  border-right: 1px solid var(--border-strong);
+}
+.bracket-btn:hover:not(:disabled) {
   color: var(--accent);
 }
-.point-title {
-  font-weight: 550;
-  font-size: 14px;
+.bracket-btn:hover:not(:disabled)::before,
+.bracket-btn:hover:not(:disabled)::after {
+  border-color: var(--accent);
 }
-.point-desc {
+.bracket-btn.primary {
+  color: var(--accent);
+}
+.bracket-btn.primary::before,
+.bracket-btn.primary::after {
+  border-color: var(--accent);
+}
+.bracket-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.bracket-btn.nav-cta {
+  height: 40px;
+  padding: 0 22px;
+  font-size: 13px;
+}
+.landing-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.landing-eyebrow .idx {
+  color: var(--accent);
+}
+.landing-eyebrow .rule {
+  width: 30px;
+  height: 1px;
+  background: var(--border-strong);
+}
+
+/* the machine nameplate — a solid gold band of real on-chain identity */
+.spec-plate {
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  overflow: hidden;
+}
+.spec-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: clamp(30px, 2.6vw, 44px) clamp(24px, 1.8vw, 30px);
+  border-right: 1px solid rgba(0, 0, 0, 0.22);
+}
+.spec-cell:last-child {
+  border-right: none;
+}
+.spec-val {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--accent-contrast);
+  letter-spacing: -0.01em;
+}
+.spec-val.link:hover {
+  text-decoration: underline;
+}
+.spec-key {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent-contrast);
+  opacity: 0.6;
+}
+@media (max-width: 700px) {
+  .spec-plate {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .spec-cell:nth-child(2) {
+    border-right: none;
+  }
+  .spec-cell:nth-child(1),
+  .spec-cell:nth-child(2) {
+    border-bottom: 1px solid rgba(0, 0, 0, 0.22);
+  }
+}
+@media (max-width: 900px) {
+  .landing {
+    padding: clamp(28px, 5vh, 56px) var(--page-pad) 56px;
+  }
+  .landing-hero {
+    grid-template-columns: 1fr;
+  }
+  .landing-copy {
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+}
+@media (max-width: 680px) {
+  .threat-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* --- the instrument panel (hero signature) — a flat cell with corner ticks -- */
+.vault-panel {
+  position: relative;
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  padding: clamp(22px, 2.6vw, 30px);
+}
+.vault-panel::before,
+.vault-panel::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  width: 6px;
+  height: 6px;
+  background: var(--accent);
+  z-index: 3;
+}
+.vault-panel::before {
+  left: 0;
+}
+.vault-panel::after {
+  right: 0;
+}
+/* faint concentric instrument rings behind the dial — the crafted signature */
+.vault-rings {
+  position: absolute;
+  top: 46%;
+  left: 50%;
+  z-index: 0;
+  width: 340px;
+  height: 340px;
+  transform: translate(-50%, -50%);
+  color: var(--accent);
+  opacity: 0.06;
+  pointer-events: none;
+  animation: ring-drift 90s linear infinite;
+}
+/* keep the plate content above the ambient rings */
+.vault-panel > :not(.vault-rings) {
+  position: relative;
+  z-index: 1;
+}
+@keyframes ring-drift {
+  to {
+    transform: translate(-50%, -50%) rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .vault-rings {
+    animation: none;
+  }
+}
+.vault-plate {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+.vault-plate-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.vault-tag {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  padding: 3px 9px;
+}
+.vault-payee {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  margin-bottom: 6px;
+}
+.vault-payee .addr {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--text);
+}
+.vault-payee .flag {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--warning);
+}
+.vault-payee .amt {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+/* the recipient-history readout — Moray's actual lead: we check who you pay */
+.vault-scan {
+  position: relative;
+  margin: 12px 0 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+.scan-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 14px;
+  font-size: 12.5px;
+}
+.scan-row + .scan-row {
+  border-top: 1px solid var(--border);
+}
+.scan-label {
+  font-family: var(--font-mono);
+  letter-spacing: 0.02em;
+  color: var(--text-muted);
+}
+.scan-value {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+.scan-value.flag {
+  color: var(--warning);
+  font-weight: 500;
+}
+
+/* the time-lock dial */
+.dial-wrap {
+  position: relative;
+  display: grid;
+  place-items: center;
+  padding: 14px 0 6px;
+}
+.dial {
+  display: block;
+}
+.dial-hand {
+  transform-origin: 100px 100px;
+  transition: transform 1000ms linear;
+}
+.dial-arc {
+  transition: stroke-dashoffset 1000ms linear;
+}
+.dial-readout {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  fill: var(--text);
+  letter-spacing: -0.02em;
+}
+.dial-caption {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  fill: var(--text-faint);
+}
+@media (prefers-reduced-motion: reduce) {
+  .dial-hand,
+  .dial-arc {
+    transition: none;
+  }
+}
+
+.vault-action {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+}
+.vault-action .btn {
+  flex: 1;
+}
+.vault-status {
   font-size: 13px;
   color: var(--text-muted);
-  margin-top: 2px;
+  line-height: 1.4;
+}
+.vault-status strong {
+  color: var(--success);
+  font-weight: 650;
+}
+.vault-status.recalled strong {
+  color: var(--accent);
+}
+.vault-note {
+  position: relative;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text-faint);
+  line-height: 1.45;
+}
+
+/* --- the threat ledger: a connected grid of dark + gold blocks ------------- */
+.ledger {
+  margin-top: 14px;
+}
+.ledger-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  padding-bottom: 24px;
+}
+.ledger-lead {
+  font-size: clamp(38px, 4.6vw, 56px);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.02;
+}
+.ledger-legend {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--text-faint);
+  padding-bottom: 3px;
+}
+.ledger-legend .chip {
+  width: 11px;
+  height: 11px;
+  border-radius: 3px;
+}
+.ledger-legend .chip.dark {
+  background: var(--surface-3);
+  border: 1px solid var(--border-strong);
+}
+.ledger-legend .chip.gold {
+  background: var(--accent);
+}
+.ledger-legend .chip.gold + span,
+.ledger-legend .chip:not(:first-child) {
+  margin-left: 6px;
+}
+
+/* the tile grid: a contiguous flat grid, dark threats + gold answers, with
+   brass registration ticks at the corners (FERRO-style) */
+.threat-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1px;
+  background: var(--border);
+  border: 1px solid var(--border);
+}
+.tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding: clamp(28px, 2.6vw, 44px);
+  min-height: 260px;
+}
+.tile.threat {
+  background: var(--bg);
+}
+.tile.answer {
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+/* brass corner ticks on the dark cells (the FERRO registration marks) */
+.tile.threat::before,
+.tile.threat::after {
+  content: '';
+  position: absolute;
+  top: -1px;
+  width: 6px;
+  height: 6px;
+  background: var(--accent);
+  z-index: 2;
+}
+.tile.threat::before {
+  left: -1px;
+}
+.tile.threat::after {
+  right: -1px;
+}
+.tile-label {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-bottom: auto;
+  padding-bottom: 28px;
+}
+.tile.threat .tile-label {
+  color: var(--danger);
+}
+.tile.answer .tile-label {
+  color: var(--accent-contrast);
+  opacity: 0.62;
+}
+.tile h3 {
+  font-family: var(--font-display);
+  font-size: clamp(21px, 2.3vw, 27px);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+.tile p {
+  font-size: 14px;
+  line-height: 1.55;
+  margin-top: 11px;
+}
+.tile.threat p {
+  color: var(--text-muted);
+}
+.tile.answer p {
+  color: var(--accent-contrast);
+  opacity: 0.84;
+}
+@media (max-width: 680px) {
+  .threat-grid {
+    grid-template-columns: 1fr;
+  }
+  .tile {
+    min-height: 0;
+  }
+  .ledger-legend {
+    display: none;
+  }
 }
 
 /* --- loader ----------------------------------------------------------------- */

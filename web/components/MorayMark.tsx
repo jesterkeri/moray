@@ -6,7 +6,7 @@ export function MorayMark({ size = 30 }: { size?: number }) {
         y="1.25"
         width="29.5"
         height="29.5"
-        rx="9"
+        rx="0"
         fill="var(--surface-2)"
         stroke="var(--border-strong)"
         strokeWidth="1"
@@ -27,8 +27,8 @@ export function Wordmark() {
   return (
     <span
       style={{
-        fontWeight: 600,
-        fontSize: 17,
+        fontWeight: 700,
+        fontSize: 20,
         letterSpacing: '-0.02em',
         color: 'var(--text)',
       }}
