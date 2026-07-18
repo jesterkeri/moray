@@ -9,7 +9,7 @@ export default function Home() {
   const { ready, authenticated } = usePrivy();
 
   return (
-    <AppFrame>
+    <AppFrame view={authenticated ? 'app' : 'landing'}>
       {!ready ? (
         <div className="fullscreen-center">
           <div className="spinner" />

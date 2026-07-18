@@ -45,6 +45,9 @@
   /* one page width + gutter for the whole app, so the bar and content align */
   --page-max: 1760px;
   --page-pad: clamp(16px, 2.4vw, 32px);
+  /* the logged-in wallet is a focused, centered column, not the full-bleed
+     landing width — keeps balance, actions and activity readable. */
+  --app-max: 860px;
 
   --font-display: var(--font-archivo), ui-sans-serif, system-ui, sans-serif;
   --font-sans: var(--font-hanken), ui-sans-serif, system-ui, sans-serif;
@@ -347,12 +350,16 @@ button {
   margin: 0 auto;
   padding: 0 var(--page-pad);
 }
+/* On the logged-in wallet, align the bar with the focused content column. */
+.moray-shell[data-view='app'] .moray-topbar-inner {
+  max-width: var(--app-max);
+}
 
 .moray-container {
   width: 100%;
-  max-width: var(--page-max);
+  max-width: var(--app-max);
   margin: 0 auto;
-  padding: 34px var(--page-pad) 80px;
+  padding: 40px var(--page-pad) 80px;
 }
 
 /* --- balance hero ----------------------------------------------------------- */
@@ -382,6 +389,28 @@ button {
   margin-top: 14px;
   color: var(--text-muted);
   font-size: 13.5px;
+}
+.copy-address {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 4px;
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  vertical-align: baseline;
+  transition: color 120ms ease;
+}
+.copy-address svg {
+  color: var(--text-faint);
+  transition: color 120ms ease;
+}
+.copy-address:hover {
+  color: var(--accent);
+}
+.copy-address:hover svg {
+  color: var(--accent);
 }
 
 /* --- action grid ------------------------------------------------------------ */

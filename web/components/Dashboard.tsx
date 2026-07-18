@@ -18,6 +18,7 @@ import {
   ListIcon,
   CheckIcon,
   UsersIcon,
+  CopyIcon,
 } from './icons';
 import { Modal } from './Modal';
 import { SendFlow } from './SendFlow';
@@ -87,7 +88,7 @@ export function Dashboard() {
           {address && (
             <>
               {'  ·  '}
-              <span className="mono">{shortAddress(address)}</span>
+              <CopyAddress address={address} />
             </>
           )}
         </div>
@@ -203,6 +204,32 @@ export function Dashboard() {
         </div>
       )}
     </div>
+  );
+}
+
+function CopyAddress({ address }: { address: string }) {
+  const [copied, setCopied] = useState(false);
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(address);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+    } catch {
+      /* clipboard blocked (insecure context / permissions): leave the address visible to copy by hand */
+    }
+  }
+
+  return (
+    <button
+      className="copy-address"
+      onClick={copy}
+      title="Copy your wallet address"
+      aria-label={copied ? 'Address copied' : 'Copy your wallet address'}
+    >
+      <span className="mono">{shortAddress(address)}</span>
+      {copied ? <CheckIcon size={13} /> : <CopyIcon size={13} />}
+    </button>
   );
 }
 
