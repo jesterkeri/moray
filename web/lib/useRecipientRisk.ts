@@ -13,6 +13,14 @@ export function useRecipientRisk(to: string, knownPayees: KnownPayee[] = []) {
   const [loading, setLoading] = useState(false);
   const reqId = useRef(0);
 
+  // Stable signature of the saved-payee set: re-assess when it actually changes
+  // (a save, a removal, or a rename) but not on every render's fresh array
+  // identity. Name is included so a rename refreshes the verdict label too.
+  const payeesKey = knownPayees
+    .map((p) => `${p.address.toLowerCase()}::${p.name}`)
+    .sort()
+    .join('|');
+
   useEffect(() => {
     const moray = MORAY_ADDRESS;
     if (!isAddress(to) || !from || !publicClient || !moray) {
@@ -42,9 +50,10 @@ export function useRecipientRisk(to: string, knownPayees: KnownPayee[] = []) {
         });
     }, 350); // debounce while typing
     return () => clearTimeout(handle);
-    // knownPayees intentionally omitted: re-assessment is driven by `to`/`from`.
+    // knownPayees array identity intentionally omitted; payeesKey captures real
+    // changes to the saved set so the poisoning/recognition checks stay current.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [to, from, publicClient]);
+  }, [to, from, publicClient, payeesKey]);
 
   return { verdict, loading };
 }

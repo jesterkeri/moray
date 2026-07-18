@@ -7,8 +7,10 @@ import { MORAY_ADDRESS, morayAbi, formatMon } from '@/lib/moray';
 import { monadTestnet } from '@/lib/chain';
 import { formatDuration } from '@/lib/format';
 import { useRecipientRisk } from '@/lib/useRecipientRisk';
+import { useBeneficiaries } from '@/lib/useBeneficiaries';
+import { MAX_NAME_LEN } from '@/lib/beneficiaries';
 import type { RiskLevel } from '@/lib/risk';
-import { ShieldIcon, AlertTriangleIcon, InfoIcon, ClockIcon } from './icons';
+import { ShieldIcon, AlertTriangleIcon, InfoIcon, ClockIcon, BookmarkIcon } from './icons';
 
 function safeParseEther(v: string): bigint | null {
   if (!v || !/^\d*\.?\d*$/.test(v)) return null;
@@ -27,6 +29,11 @@ export function SendFlow({
   const { address: from } = useAccount();
   const [to, setTo] = useState('');
   const [amountStr, setAmountStr] = useState('');
+
+  const { list: beneficiaries, knownPayees, add: addBeneficiary } = useBeneficiaries();
+  const [saveOpen, setSaveOpen] = useState(false);
+  const [saveName, setSaveName] = useState('');
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const enabled = Boolean(from) && Boolean(MORAY_ADDRESS);
 
@@ -57,14 +64,21 @@ export function SendFlow({
     query: { enabled },
   });
 
-  const { verdict, loading: riskLoading } = useRecipientRisk(to);
+  const { verdict, loading: riskLoading } = useRecipientRisk(to, knownPayees);
 
-  const { writeContract, data: hash, isPending, error: writeError } = useWriteContract();
+  const { writeContract, data: hash, isPending, error: writeError, reset: resetWrite } = useWriteContract();
   const { data: receipt, isLoading: mining, isSuccess } = useWaitForTransactionReceipt({ hash });
 
   const amtWei = safeParseEther(amountStr);
   const isSelf = Boolean(from && isAddress(to) && to.toLowerCase() === from.toLowerCase());
   const validTo = isAddress(to) && !isSelf;
+
+  // Instant recognition straight from the saved list (doesn't wait for the risk read).
+  const savedName = useMemo(() => {
+    if (!isAddress(to)) return null;
+    const t = to.toLowerCase();
+    return beneficiaries.find((b) => b.address.toLowerCase() === t)?.name ?? null;
+  }, [to, beneficiaries]);
   const overBalance = amtWei !== null && vaultBalance !== undefined && amtWei > (vaultBalance as bigint);
   const validAmt = amtWei !== null && amtWei > 0n && !overBalance;
 
@@ -85,6 +99,26 @@ export function SendFlow({
     else reason = 'Held because the amount is above your instant allowance.';
     return { seconds, reason };
   }, [validTo, validAmt, amtWei, minDelay, withdrawDelay, remaining, verdict]);
+
+  // Editing the recipient closes an open "save as beneficiary" form.
+  useEffect(() => {
+    setSaveOpen(false);
+    setSaveName('');
+    setSaveError(null);
+  }, [to]);
+
+  // On account switch, wipe the whole draft (and any in-flight write) so a send
+  // can never fire from the newly-active vault to the previous account's stale
+  // recipient/amount.
+  useEffect(() => {
+    setTo('');
+    setAmountStr('');
+    setSaveOpen(false);
+    setSaveName('');
+    setSaveError(null);
+    resetWrite();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [from]);
 
   useEffect(() => {
     if (!isSuccess || !receipt) return;
@@ -119,6 +153,17 @@ export function SendFlow({
     !riskLoading &&
     verdict !== null;
 
+  function saveCurrent() {
+    setSaveError(null);
+    const res = addBeneficiary(to, saveName);
+    if (!res.ok) {
+      setSaveError(res.error);
+      return;
+    }
+    setSaveOpen(false);
+    setSaveName('');
+  }
+
   function submit() {
     if (!canSend || amtWei === null || !MORAY_ADDRESS) return;
     writeContract({
@@ -146,6 +191,26 @@ export function SendFlow({
           autoComplete="off"
           disabled={busy}
         />
+        {beneficiaries.length > 0 && (
+          <div className="payee-pick">
+            {beneficiaries.map((b) => {
+              const active = to.length > 0 && b.address.toLowerCase() === to.toLowerCase();
+              return (
+                <button
+                  key={b.address}
+                  type="button"
+                  className={`payee-chip${active ? ' active' : ''}`}
+                  onClick={() => setTo(b.address)}
+                  disabled={busy}
+                  title={b.address}
+                >
+                  <BookmarkIcon size={12} />
+                  {b.name}
+                </button>
+              );
+            })}
+          </div>
+        )}
         {isSelf && <FieldError>Use Withdraw to move funds to your own wallet.</FieldError>}
       </div>
 
@@ -163,6 +228,58 @@ export function SendFlow({
             </div>
           ) : (
             verdict && <VerdictCard level={verdict.level} title={verdict.title} reason={verdict.reason} />
+          )}
+
+          {savedName ? (
+            <div className="saved-note">
+              <BookmarkIcon size={13} />
+              Saved as <strong>{savedName}</strong>
+            </div>
+          ) : (
+            !isSelf &&
+            (saveOpen ? (
+              <div className="save-payee">
+                <input
+                  className="field"
+                  placeholder="Name it, e.g. Mom, Landlord, Coinbase"
+                  value={saveName}
+                  maxLength={MAX_NAME_LEN}
+                  onChange={(e) => setSaveName(e.target.value)}
+                  disabled={busy}
+                  autoFocus
+                />
+                {saveError && <FieldError>{saveError}</FieldError>}
+                <div className="row gap-2" style={{ marginTop: 8 }}>
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    onClick={saveCurrent}
+                    disabled={busy || !saveName.trim()}
+                  >
+                    Save beneficiary
+                  </button>
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => {
+                      setSaveOpen(false);
+                      setSaveError(null);
+                    }}
+                    disabled={busy}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className="save-payee-toggle"
+                onClick={() => setSaveOpen(true)}
+                disabled={busy}
+              >
+                <BookmarkIcon size={13} />
+                Save this address as a beneficiary
+              </button>
+            ))
           )}
         </div>
       )}

@@ -38,8 +38,16 @@ export function WithdrawFlow({
     query: { enabled },
   });
 
-  const { writeContract, data: hash, isPending, error: writeError } = useWriteContract();
+  const { writeContract, data: hash, isPending, error: writeError, reset: resetWrite } = useWriteContract();
   const { data: receipt, isLoading: mining, isSuccess } = useWaitForTransactionReceipt({ hash });
+
+  // On account switch, wipe the draft (and any in-flight write) so a stale
+  // amount can't withdraw from the newly-active vault.
+  useEffect(() => {
+    setAmountStr('');
+    resetWrite();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [address]);
 
   const amtWei = parseMon(amountStr);
   const overBalance = amtWei !== null && vaultBalance !== undefined && amtWei > (vaultBalance as bigint);

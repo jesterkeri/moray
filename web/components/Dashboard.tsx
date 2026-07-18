@@ -17,16 +17,18 @@ import {
   ShieldIcon,
   ListIcon,
   CheckIcon,
+  UsersIcon,
 } from './icons';
 import { Modal } from './Modal';
 import { SendFlow } from './SendFlow';
 import { DepositFlow } from './DepositFlow';
 import { WithdrawFlow } from './WithdrawFlow';
 import { SafetyScreen } from './SafetyScreen';
+import { BeneficiariesScreen } from './BeneficiariesScreen';
 import { PendingList } from './PendingList';
 import { StatementView } from './StatementView';
 
-type Panel = 'deposit' | 'send' | 'withdraw' | 'safety' | null;
+type Panel = 'deposit' | 'send' | 'withdraw' | 'beneficiaries' | 'safety' | null;
 
 export function Dashboard() {
   const { address } = useAccount();
@@ -94,6 +96,7 @@ export function Dashboard() {
           <ActionButton label="Deposit" icon={<ArrowDownIcon />} onClick={() => setPanel('deposit')} />
           <ActionButton label="Send" icon={<SendIcon />} onClick={() => setPanel('send')} />
           <ActionButton label="Withdraw" icon={<ArrowUpIcon />} onClick={() => setPanel('withdraw')} />
+          <ActionButton label="Beneficiaries" icon={<UsersIcon />} onClick={() => setPanel('beneficiaries')} />
           <ActionButton label="Safety" icon={<ShieldIcon />} onClick={() => setPanel('safety')} />
         </div>
       </section>
@@ -156,6 +159,12 @@ export function Dashboard() {
               );
             }}
           />
+        </Modal>
+      )}
+
+      {panel === 'beneficiaries' && (
+        <Modal title="Beneficiaries" onClose={() => setPanel(null)}>
+          <BeneficiariesScreen />
         </Modal>
       )}
 

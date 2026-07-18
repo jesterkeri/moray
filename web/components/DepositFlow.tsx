@@ -16,8 +16,17 @@ export function DepositFlow({ onDone }: { onDone: (info: { amount: string }) => 
 
   const { data: wallet } = useBalance({ address, query: { enabled: Boolean(address) } });
 
-  const { writeContract, data: hash, isPending, error: writeError } = useWriteContract();
+  const { writeContract, data: hash, isPending, error: writeError, reset: resetWrite } = useWriteContract();
   const { isLoading: mining, isSuccess } = useWaitForTransactionReceipt({ hash });
+
+  // On account switch, wipe the draft (and any in-flight write) so a stale
+  // amount can't deposit from the newly-active wallet.
+  useEffect(() => {
+    setAmountStr('');
+    setSubmittedAmount('');
+    resetWrite();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [address]);
 
   const amtWei = parseMon(amountStr);
   const walletValue = wallet?.value;

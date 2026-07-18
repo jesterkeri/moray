@@ -8,6 +8,9 @@ export type RiskVerdict = {
   title: string;
   reason: string;
   cleared: boolean;
+  /** Name you saved this exact address under, if any. Recognition only — it
+   * never changes `cleared` or the hold, which stay driven by on-chain state. */
+  savedAs?: string;
 };
 
 export type KnownPayee = { address: string; name: string };
@@ -38,6 +41,11 @@ export async function assessRecipient(opts: {
     };
   }
 
+  // Exact match to a payee you saved. Recognition only: it never lowers the
+  // hold, which is decided by the on-chain reads below.
+  const saved = findExact(to, knownPayees);
+  const savedAs = saved?.name;
+
   try {
     const [cleared, txCount, code] = await Promise.all([
       publicClient.readContract({
@@ -53,9 +61,10 @@ export async function assessRecipient(opts: {
     if (cleared) {
       return {
         level: 'trusted',
-        title: 'Trusted payee',
+        title: savedAs ? `${savedAs} · trusted` : 'Trusted payee',
         reason: "You've cleared a payment to this address before, so it can clear right away.",
         cleared: true,
+        savedAs,
       };
     }
 
@@ -63,26 +72,33 @@ export async function assessRecipient(opts: {
     if (isContract) {
       return {
         level: 'neutral',
-        title: 'Smart contract',
+        title: savedAs ? `${savedAs} · contract` : 'Smart contract',
         reason: 'This is a contract, not a personal wallet. Make sure it is the one you intend. It clears through the new-payee window.',
         cleared: false,
+        savedAs,
       };
     }
 
     if (txCount === 0) {
       return {
         level: 'caution',
-        title: 'Brand-new address',
-        reason: 'No transaction history. If this is a scam or a typo, the clearing window lets you recall before it lands.',
+        title: savedAs ? `${savedAs} · brand-new` : 'Brand-new address',
+        reason: savedAs
+          ? 'You saved this name, but the address has no on-chain history yet, so it still clears through the new-payee window. Recall it before it lands if anything looks off.'
+          : 'No transaction history. If this is a scam or a typo, the clearing window lets you recall before it lands.',
         cleared: false,
+        savedAs,
       };
     }
 
     return {
       level: 'neutral',
-      title: 'New payee',
-      reason: 'You have not sent here before, so it clears through the new-payee window. You can recall it any time before it does.',
+      title: savedAs ? `${savedAs} · new here` : 'New payee',
+      reason: savedAs
+        ? 'You saved this name, but you have not cleared a payment to it yet, so it clears through the new-payee window. Recall it any time before it does.'
+        : 'You have not sent here before, so it clears through the new-payee window. You can recall it any time before it does.',
       cleared: false,
+      savedAs,
     };
   } catch {
     return {
@@ -90,8 +106,14 @@ export async function assessRecipient(opts: {
       title: "Couldn't verify this address",
       reason: 'Treating it as new. The clearing window still protects you.',
       cleared: false,
+      savedAs,
     };
   }
+}
+
+function findExact(to: string, known: KnownPayee[]): KnownPayee | null {
+  const t = to.toLowerCase();
+  return known.find((p) => p.address.toLowerCase() === t) ?? null;
 }
 
 function findLookalike(to: string, known: KnownPayee[]): KnownPayee | null {
