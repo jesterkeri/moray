@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useAccount, useReadContract, useReadContracts, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { MORAY_ADDRESS, morayAbi, formatMon, shortAddress } from '@/lib/moray';
 import { monadTestnet } from '@/lib/chain';
@@ -9,7 +9,13 @@ import { Clock } from './Clock';
 
 type TransferTuple = readonly [string, string, bigint, bigint, number]; // from,to,amount,unlock,status
 
-export function PendingList({ onChange }: { onChange?: () => void }) {
+export function PendingList({
+  onChange,
+  onWithdrawalOut,
+}: {
+  onChange?: () => void;
+  onWithdrawalOut?: () => void;
+}) {
   const { address } = useAccount();
   const now = useNow();
   const enabled = Boolean(address) && Boolean(MORAY_ADDRESS);
@@ -55,6 +61,9 @@ export function PendingList({ onChange }: { onChange?: () => void }) {
 
   const { writeContract, data: hash, isPending, error: writeError } = useWriteContract();
   const [actingId, setActingId] = useState<bigint | null>(null);
+  // True while a self-withdrawal Release is confirming — its claim() pays MON to
+  // the owner's wallet, so we tell the parent to suppress auto-sweep.
+  const walletOutRef = useRef(false);
   const { isLoading: mining, isSuccess: confirmed } = useWaitForTransactionReceipt({
     hash,
     query: { enabled: Boolean(hash) },
@@ -67,16 +76,26 @@ export function PendingList({ onChange }: { onChange?: () => void }) {
     refetchIds();
     refetchTransfers();
     onChange?.();
+    if (walletOutRef.current) {
+      walletOutRef.current = false;
+      onWithdrawalOut?.();
+    }
     setActingId(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [confirmed]);
 
-  function act(id: bigint, fn: 'cancel' | 'claim' | 'reclaim') {
+  function act(id: bigint, fn: 'cancel' | 'claim' | 'reclaim', walletOut = false) {
     if (!MORAY_ADDRESS) return;
     setActingId(id);
+    walletOutRef.current = walletOut;
     writeContract(
       { address: MORAY_ADDRESS, abi: morayAbi, functionName: fn, args: [id], chainId: monadTestnet.id },
-      { onError: () => setActingId(null) },
+      {
+        onError: () => {
+          setActingId(null);
+          walletOutRef.current = false; // don't let a rejected Release pause auto-sweep later
+        },
+      },
     );
   }
 
@@ -147,7 +166,11 @@ export function PendingList({ onChange }: { onChange?: () => void }) {
                   <span className="countdown" data-done="true">
                     Cleared
                   </span>
-                  <button className="btn btn-secondary btn-sm" disabled={busy} onClick={() => act(row.id, 'claim')}>
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    disabled={busy}
+                    onClick={() => act(row.id, 'claim', row.isSelf)}
+                  >
                     {actingThis ? <span className="spinner-sm" /> : 'Release'}
                   </button>
                 </>

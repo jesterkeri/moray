@@ -12,6 +12,7 @@ import {
 } from '@/lib/moray';
 import { monadTestnet } from '@/lib/chain';
 import { formatDuration } from '@/lib/format';
+import { useAutoDeposit } from '@/lib/useAutoDeposit';
 import {
   ArrowDownIcon,
   ArrowUpIcon,
@@ -96,6 +97,41 @@ export function Dashboard() {
     bumpStatement();
   };
 
+  // Auto-deposit: sweep wallet funds (above a gas reserve) into the vault so it's
+  // the real spendable balance. A user-controlled, persisted toggle (not silent):
+  // it only runs when idle on the overview, and is suppressed for the session
+  // after any withdrawal so funds you pulled out aren't swept back.
+  const [autoSweep, setAutoSweep] = useState(true);
+  const [sweepSuppressed, setSweepSuppressed] = useState(false);
+  useEffect(() => {
+    try {
+      if (localStorage.getItem('moray-autosweep') === '0') setAutoSweep(false);
+    } catch {
+      /* storage blocked: default on */
+    }
+  }, []);
+  const toggleAutoSweep = () =>
+    setAutoSweep((v) => {
+      const next = !v;
+      try {
+        localStorage.setItem('moray-autosweep', next ? '1' : '0');
+      } catch {
+        /* ignore */
+      }
+      if (next) setSweepSuppressed(false);
+      return next;
+    });
+  useAutoDeposit({
+    walletBalance: walletBalance?.value,
+    enabled:
+      configured && Boolean(address) && autoSweep && view === 'overview' && panel === null,
+    paused: sweepSuppressed,
+    onSwept: (amount) => {
+      refetchAll();
+      setToast(`Moved ${formatMon(amount)} MON into your safe.`);
+    },
+  });
+
   if (!configured) {
     return <NotDeployed />;
   }
@@ -151,7 +187,7 @@ export function Dashboard() {
               </div>
             </header>
 
-            <PendingList onChange={refetchAll} />
+            <PendingList onChange={refetchAll} onWithdrawalOut={() => setSweepSuppressed(true)} />
 
             <div className="dash-grid">
               <section className="dcard card-balance">
@@ -186,10 +222,28 @@ export function Dashboard() {
                   <span className="balance-unit on-accent">MON</span>
                 </div>
                 <p className="card-note on-accent">
-                  Sitting in your signer, ready to move into the safe.
+                  {!autoSweep
+                    ? 'Auto-sweep is off. Use Move to safe to deposit.'
+                    : sweepSuppressed
+                      ? 'Auto-sweep paused after your withdrawal, so these funds stay put.'
+                      : 'Kept for gas. Anything more moves into your safe automatically.'}
                 </p>
+                <div className="autosweep">
+                  <span className="autosweep-status">
+                    Auto-sweep {autoSweep ? (sweepSuppressed ? 'paused' : 'on') : 'off'}
+                  </span>
+                  {autoSweep && sweepSuppressed ? (
+                    <button className="autosweep-link" onClick={() => setSweepSuppressed(false)}>
+                      Resume
+                    </button>
+                  ) : (
+                    <button className="autosweep-link" onClick={toggleAutoSweep}>
+                      {autoSweep ? 'Turn off' : 'Turn on'}
+                    </button>
+                  )}
+                </div>
                 <button className="pill pill-onaccent" onClick={() => setPanel('deposit')}>
-                  Deposit into safe
+                  Move to safe now
                 </button>
               </section>
 
@@ -307,6 +361,7 @@ export function Dashboard() {
           <WithdrawFlow
             onDone={({ instant, seconds, known }) => {
               setPanel(null);
+              setSweepSuppressed(true);
               refetchVault();
               refetchWallet();
               bumpStatement();
