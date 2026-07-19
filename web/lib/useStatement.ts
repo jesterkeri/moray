@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { parseEventLogs, type Log } from 'viem';
 import { usePublicClient, useAccount } from 'wagmi';
 import { MORAY_ADDRESS, morayAbi } from './moray';
 
@@ -17,10 +18,17 @@ export type Entry = {
   txHash: string;
 };
 
-type MinLog = { blockNumber: bigint | null; logIndex: number | null; transactionHash: `0x${string}` | null };
+type Meta = { blockNumber: bigint; logIndex: number; txHash: string };
 
-// Start block for the log scan. Set NEXT_PUBLIC_MORAY_FROM_BLOCK to the vault's
-// deployment block if the RPC caps eth_getLogs ranges; defaults to 0.
+// The public Monad RPC caps eth_getLogs at a 100-block range, so we scan in
+// 100-block windows over a bounded recent range rather than deploy->latest.
+const RANGE = 100n;
+// How far back to look. Monad blocks are sub-second, so this covers a wide
+// recent window; older history needs an archival RPC that lifts the getLogs cap.
+const SCAN_WINDOW = 2000n;
+const BATCH = 6; // concurrent getLogs calls per round
+
+// Floor for the scan: the vault's deployment block (set NEXT_PUBLIC_MORAY_FROM_BLOCK).
 const FROM_BLOCK: bigint = (() => {
   const v = process.env.NEXT_PUBLIC_MORAY_FROM_BLOCK;
   try {
@@ -45,70 +53,102 @@ export function useStatement(refreshKey?: number) {
     let cancelled = false;
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
     const moray = MORAY_ADDRESS;
+    const mine = address.toLowerCase();
+    const isMine = (a?: string) => typeof a === 'string' && a.toLowerCase() === mine;
 
     const load = async (showLoading: boolean) => {
       if (showLoading) setLoading(true);
-      const common = { address: moray, abi: morayAbi, fromBlock: FROM_BLOCK, toBlock: 'latest' as const };
       try {
-        // Phase 1: the user's created / terminal-outflow events.
-        const [deps, withdrawns, sends, wreqs] = await Promise.all([
-          publicClient.getContractEvents({ ...common, eventName: 'Deposited', args: { user: address } }),
-          publicClient.getContractEvents({ ...common, eventName: 'Withdrawn', args: { user: address } }),
-          publicClient.getContractEvents({ ...common, eventName: 'TransferCreated', args: { from: address } }),
-          publicClient.getContractEvents({ ...common, eventName: 'WithdrawRequested', args: { user: address } }),
-        ]);
+        const latest = await publicClient.getBlockNumber();
+        const floor = latest > SCAN_WINDOW ? latest - SCAN_WINDOW + 1n : 0n;
+        const start = FROM_BLOCK > floor ? FROM_BLOCK : floor;
 
-        // Phase 2: how those in-flight transfers actually ended (bounded to their ids).
-        const ids = [
-          ...sends.map((l) => l.args.id).filter((x): x is bigint => x !== undefined),
-          ...wreqs.map((l) => l.args.id).filter((x): x is bigint => x !== undefined),
-        ];
+        // Build the 100-block windows across the range.
+        const windows: [bigint, bigint][] = [];
+        for (let from = start; from <= latest; from += RANGE) {
+          const to = from + RANGE - 1n > latest ? latest : from + RANGE - 1n;
+          windows.push([from, to]);
+        }
+
+        // Fetch raw address logs per window, in small concurrent rounds. A single
+        // window failing (rate limit) drops to [] rather than failing the whole load.
+        const raw: Log[] = [];
+        for (let i = 0; i < windows.length && !cancelled; i += BATCH) {
+          const round = windows.slice(i, i + BATCH);
+          const results = await Promise.all(
+            round.map(([fromBlock, toBlock]) =>
+              publicClient.getLogs({ address: moray, fromBlock, toBlock }).catch(() => [] as Log[]),
+            ),
+          );
+          for (const r of results) raw.push(...r);
+        }
+        if (cancelled) return;
+
+        const decoded = parseEventLogs({ abi: morayAbi, logs: raw });
+
+        // First pass: terminal outcomes keyed by transfer id (ids are globally unique).
         const terminal = new Map<string, EntryStatus>();
-        if (ids.length > 0) {
-          const [claimed, cancelledE, reclaimedE] = await Promise.all([
-            publicClient.getContractEvents({ ...common, eventName: 'TransferClaimed', args: { id: ids } }),
-            publicClient.getContractEvents({ ...common, eventName: 'TransferCancelled', args: { id: ids } }),
-            publicClient.getContractEvents({ ...common, eventName: 'TransferReclaimed', args: { id: ids } }),
-          ]);
-          for (const l of claimed) if (l.args.id !== undefined) terminal.set(l.args.id.toString(), 'released');
-          for (const l of cancelledE) if (l.args.id !== undefined) terminal.set(l.args.id.toString(), 'recalled');
-          for (const l of reclaimedE) if (l.args.id !== undefined) terminal.set(l.args.id.toString(), 'recalled');
+        for (const l of decoded) {
+          const args = l.args as Record<string, unknown>;
+          const id = args.id;
+          if (id === undefined) continue;
+          if (l.eventName === 'TransferClaimed') terminal.set(String(id), 'released');
+          else if (l.eventName === 'TransferCancelled') terminal.set(String(id), 'recalled');
+          else if (l.eventName === 'TransferReclaimed') terminal.set(String(id), 'recalled');
         }
 
         const list: Entry[] = [];
         const push = (
           kind: EntryKind,
-          amount: bigint | undefined,
-          l: MinLog,
+          amount: unknown,
+          meta: Meta,
           extra?: { status?: EntryStatus; counterparty?: string },
         ) => {
-          if (amount === undefined) return; // fail closed: never fabricate a 0 amount
+          if (typeof amount !== 'bigint') return; // fail closed: never fabricate an amount
           list.push({
             kind,
             amount,
             status: extra?.status,
             counterparty: extra?.counterparty,
-            blockNumber: l.blockNumber ?? 0n,
-            logIndex: l.logIndex ?? 0,
-            txHash: l.transactionHash ?? '',
+            blockNumber: meta.blockNumber,
+            logIndex: meta.logIndex,
+            txHash: meta.txHash,
           });
         };
 
-        for (const l of deps) push('deposit', l.args.amount, l);
-        for (const l of withdrawns) push('withdraw', l.args.amount, l);
-        for (const l of sends) {
-          push('send', l.args.amount, l, {
-            status: (l.args.id !== undefined && terminal.get(l.args.id.toString())) || 'clearing',
-            counterparty: l.args.to,
-          });
-        }
-        for (const l of wreqs) {
-          push('withdrawDelayed', l.args.amount, l, {
-            status: (l.args.id !== undefined && terminal.get(l.args.id.toString())) || 'clearing',
-          });
+        for (const l of decoded) {
+          const args = l.args as Record<string, unknown>;
+          const meta: Meta = {
+            blockNumber: l.blockNumber ?? 0n,
+            logIndex: l.logIndex ?? 0,
+            txHash: l.transactionHash ?? '',
+          };
+          switch (l.eventName) {
+            case 'Deposited':
+              if (isMine(args.user as string)) push('deposit', args.amount, meta);
+              break;
+            case 'Withdrawn':
+              if (isMine(args.user as string)) push('withdraw', args.amount, meta);
+              break;
+            case 'TransferCreated':
+              if (isMine(args.from as string))
+                push('send', args.amount, meta, {
+                  status: terminal.get(String(args.id)) ?? 'clearing',
+                  counterparty: args.to as string,
+                });
+              break;
+            case 'WithdrawRequested':
+              if (isMine(args.user as string))
+                push('withdrawDelayed', args.amount, meta, {
+                  status: terminal.get(String(args.id)) ?? 'clearing',
+                });
+              break;
+          }
         }
 
-        list.sort((a, b) => (a.blockNumber !== b.blockNumber ? (a.blockNumber < b.blockNumber ? 1 : -1) : b.logIndex - a.logIndex));
+        list.sort((a, b) =>
+          a.blockNumber !== b.blockNumber ? (a.blockNumber < b.blockNumber ? 1 : -1) : b.logIndex - a.logIndex,
+        );
 
         if (!cancelled) {
           setEntries(list);
@@ -118,16 +158,11 @@ export function useStatement(refreshKey?: number) {
       } catch {
         if (!cancelled) {
           setLoading(false);
-          // Only a foreground load surfaces a hard error; a failed background retry
-          // keeps the existing good data rather than blanking it.
           if (showLoading) setError(true);
         }
       }
     };
 
-    // Run the foreground load, then ONE soft retry AFTER it completes (never
-    // overlapping), to catch RPC log-index lag right after an action bumps the key.
-    // Sequential = no stale/fresh race and no lost foreground result.
     load(true).finally(() => {
       if (!cancelled) {
         retryTimer = setTimeout(() => {

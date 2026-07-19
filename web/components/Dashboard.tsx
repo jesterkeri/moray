@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { usePrivy } from '@privy-io/react-auth';
 import { useAccount, useBalance, useReadContract } from 'wagmi';
 import {
   MORAY_ADDRESS,
@@ -20,7 +21,13 @@ import {
   CheckIcon,
   UsersIcon,
   CopyIcon,
+  HomeIcon,
+  HourglassIcon,
+  LogOutIcon,
+  InfoIcon,
 } from './icons';
+import { MorayMark } from './MorayMark';
+import { ThemeToggle } from './ThemeToggle';
 import { Modal } from './Modal';
 import { SendFlow } from './SendFlow';
 import { DepositFlow } from './DepositFlow';
@@ -30,14 +37,18 @@ import { BeneficiariesScreen } from './BeneficiariesScreen';
 import { PendingList } from './PendingList';
 import { StatementView } from './StatementView';
 
-type Panel = 'deposit' | 'send' | 'withdraw' | 'beneficiaries' | 'safety' | null;
+type Panel = 'deposit' | 'send' | 'withdraw' | null;
+type View = 'overview' | 'activity' | 'payees' | 'inheritance' | 'safety';
 
 const ZERO = '0x0000000000000000000000000000000000000000';
 type AcctTuple = readonly [string, string, string, bigint, bigint, boolean, bigint, bigint, bigint, bigint];
 
 export function Dashboard() {
   const { address } = useAccount();
+  const { user, logout } = usePrivy();
+  const [view, setView] = useState<View>('overview');
   const [panel, setPanel] = useState<Panel>(null);
+  const [infoView, setInfoView] = useState<View | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [statementKey, setStatementKey] = useState(0);
   const bumpStatement = () => setStatementKey((k) => k + 1);
@@ -78,14 +89,6 @@ export function Dashboard() {
     return () => clearTimeout(t);
   }, [toast]);
 
-  if (!configured) {
-    return (
-      <div className="moray-container">
-        <NotDeployed />
-      </div>
-    );
-  }
-
   const refetchAll = () => {
     refetchVault();
     refetchWallet();
@@ -93,102 +96,180 @@ export function Dashboard() {
     bumpStatement();
   };
 
+  if (!configured) {
+    return <NotDeployed />;
+  }
+
+  const email = user?.email?.address;
+
   return (
-    <div className="moray-container">
-      {/* Balance band — the vault figure + your wallet, split by a hairline */}
-      <section className="wallet-hero">
-        <div className="wallet-hero-main">
-          <span className="dash-eyebrow">
-            <span className="idx" />
-            Vault balance
-          </span>
-          <div className="wallet-figure">
-            <span className="wallet-figure-num mono">
-              {vaultLoading ? '···' : formatMon(vaultBalance as bigint | undefined)}
-            </span>
-            <span className="wallet-figure-unit">MON</span>
+    <div className="dash-shell">
+      <aside className="dash-rail">
+        <div className="rail-top">
+          <div className="rail-logo" title="Moray">
+            <MorayMark size={26} />
           </div>
-          <div className="wallet-hero-meta">
-            {address && <CopyAddress address={address} />}
-            <span className="wallet-tag" data-tone={frozen ? 'frozen' : 'safe'}>
-              {frozen ? 'Frozen' : 'Protected'}
-            </span>
-          </div>
+          <span className="rail-wordmark">Moray</span>
         </div>
 
-        <div className="wallet-hero-side">
-          <span className="dash-eyebrow">
-            <span className="idx" />
-            In your wallet
-          </span>
-          <div className="wallet-side-figure">
-            <span className="wallet-side-num mono">
-              {walletBalance ? formatMon(walletBalance.value) : '—'}
-            </span>
-            <span className="wallet-side-unit">MON</span>
-          </div>
-          <p className="wallet-side-note">Sitting in your signer, ready to move into the safe.</p>
-          <button className="bracket-btn primary" onClick={() => setPanel('deposit')}>
-            Deposit
+        <nav className="rail-nav">
+          <RailItem icon={<HomeIcon size={19} />} label="Overview" active={view === 'overview'} onClick={() => setView('overview')} />
+          <RailItem icon={<ListIcon size={19} />} label="Activity" active={view === 'activity'} onClick={() => setView('activity')} />
+          <RailItem icon={<UsersIcon size={19} />} label="Beneficiaries" active={view === 'payees'} onClick={() => setView('payees')} />
+          <RailItem icon={<HourglassIcon size={19} />} label="Dead Man’s Switch" active={view === 'inheritance'} onClick={() => setView('inheritance')} />
+          <RailItem icon={<ShieldIcon size={19} />} label="Safety" active={view === 'safety'} onClick={() => setView('safety')} />
+        </nav>
+
+        <div className="rail-foot">
+          <ThemeToggle />
+          <button className="rail-icon" title="Log out" aria-label="Log out" onClick={() => logout()}>
+            <LogOutIcon size={18} />
+            <span className="rail-label">Log out</span>
           </button>
+          <div className="rail-user">
+            <span className="rail-avatar" title={email ?? shortAddress(address)}>
+              {(email ?? 'M').charAt(0).toUpperCase()}
+            </span>
+            <span className="rail-email">{email ?? shortAddress(address)}</span>
+          </div>
         </div>
-      </section>
+      </aside>
 
-      {/* Actions — a contiguous hairline grid, gold sweeps in on hover */}
-      <nav className="wallet-actions">
-        <WalletAction
-          label="Deposit"
-          desc="Add funds to the vault"
-          icon={<ArrowDownIcon />}
-          onClick={() => setPanel('deposit')}
-        />
-        <WalletAction
-          label="Send"
-          desc="Pay, with a recall window"
-          icon={<SendIcon />}
-          onClick={() => setPanel('send')}
-        />
-        <WalletAction
-          label="Withdraw"
-          desc="Move funds to your wallet"
-          icon={<ArrowUpIcon />}
-          onClick={() => setPanel('withdraw')}
-        />
-        <WalletAction
-          label="Beneficiaries"
-          desc="Saved, named payees"
-          icon={<UsersIcon />}
-          onClick={() => setPanel('beneficiaries')}
-        />
-        <WalletAction
-          label="Safety"
-          desc="Guardians, limits, recovery"
-          icon={<ShieldIcon />}
-          onClick={() => setPanel('safety')}
-        />
-      </nav>
+      <main className="dash-main">
+        {view === 'overview' && (
+          <>
+            <header className="dash-head">
+              <div>
+                <div className="dash-crumb">Wallet · Overview</div>
+                <h1 className="dash-title">Your safe</h1>
+              </div>
+              <div className="dash-head-nav">
+                {address && <CopyAddress address={address} />}
+                <button className="info-btn" onClick={() => setInfoView('overview')} aria-label="About this page" title="About this page">
+                  <InfoIcon size={18} />
+                </button>
+              </div>
+            </header>
 
-      <PendingList onChange={refetchAll} />
+            <PendingList onChange={refetchAll} />
 
-      {/* Lower band — the ledger, and your live safeguards */}
-      <div className="wallet-lower">
-        <section className="wallet-activity">
-          <div className="dash-section-head">
-            <span className="dash-eyebrow">
-              <span className="idx" />
-              Activity
-            </span>
-            <span className="dash-badge">
-              <ListIcon size={13} /> On-chain
-            </span>
-          </div>
-          <div className="wallet-panel">
-            <StatementView refreshKey={statementKey} />
-          </div>
-        </section>
+            <div className="dash-grid">
+              <section className="dcard card-balance">
+                <span className="dcard-label">Vault balance</span>
+                <div className="balance-figure">
+                  <span className="balance-num">
+                    {vaultLoading ? '···' : formatMon(vaultBalance as bigint | undefined)}
+                  </span>
+                  <span className="balance-unit">MON</span>
+                </div>
+                <div className="balance-foot">
+                  <span className="chip-status" data-tone={frozen ? 'frozen' : 'safe'}>
+                    {frozen ? 'Frozen' : 'Protected'}
+                  </span>
+                  <div className="balance-cta">
+                    <button className="pill pill-primary" onClick={() => setPanel('deposit')}>
+                      Deposit
+                    </button>
+                    <button className="pill" onClick={() => setPanel('send')}>
+                      Send
+                    </button>
+                  </div>
+                </div>
+              </section>
 
-        <Safeguards acct={acct} explorer={explorer} onManage={() => setPanel('safety')} />
-      </div>
+              <section className="dcard card-wallet accent">
+                <span className="dcard-label on-accent">In your wallet</span>
+                <div className="balance-figure">
+                  <span className="balance-num">
+                    {walletBalance ? formatMon(walletBalance.value) : '—'}
+                  </span>
+                  <span className="balance-unit on-accent">MON</span>
+                </div>
+                <p className="card-note on-accent">
+                  Sitting in your signer, ready to move into the safe.
+                </p>
+                <button className="pill pill-onaccent" onClick={() => setPanel('deposit')}>
+                  Deposit into safe
+                </button>
+              </section>
+
+              <section className="dcard card-move">
+                <span className="dcard-label">Move money</span>
+                <div className="quick-actions">
+                  <button className="quick-action" onClick={() => setPanel('deposit')}>
+                    <span className="qa-icon">
+                      <ArrowDownIcon size={20} />
+                    </span>
+                    <span className="qa-label">Deposit</span>
+                    <span className="qa-sub">Add funds to the vault</span>
+                  </button>
+                  <button className="quick-action" onClick={() => setPanel('send')}>
+                    <span className="qa-icon">
+                      <SendIcon size={20} />
+                    </span>
+                    <span className="qa-label">Send</span>
+                    <span className="qa-sub">Pay, with a recall window</span>
+                  </button>
+                  <button className="quick-action" onClick={() => setPanel('withdraw')}>
+                    <span className="qa-icon">
+                      <ArrowUpIcon size={20} />
+                    </span>
+                    <span className="qa-label">Withdraw</span>
+                    <span className="qa-sub">Move funds to your wallet</span>
+                  </button>
+                </div>
+              </section>
+
+              <section className="dcard card-safeguards">
+                <div className="dcard-head">
+                  <span className="dcard-label">Safeguards</span>
+                  <span className="dcard-tag">
+                    <ShieldIcon size={13} /> Live
+                  </span>
+                </div>
+                <Safeguards acct={acct} explorer={explorer} />
+                <button className="pill pill-ghost" onClick={() => setView('safety')}>
+                  Manage in Safety
+                </button>
+              </section>
+            </div>
+          </>
+        )}
+
+        {view === 'activity' && (
+          <SubPage title="Activity" crumb="On-chain history" onBack={() => setView('overview')} onInfo={() => setInfoView('activity')}>
+            <div className="dcard">
+              <div className="dcard-head">
+                <span className="dcard-label">Movements</span>
+                <span className="dcard-tag">
+                  <ListIcon size={13} /> On-chain
+                </span>
+              </div>
+              <div className="dcard-body">
+                <StatementView refreshKey={statementKey} />
+              </div>
+            </div>
+          </SubPage>
+        )}
+
+        {view === 'payees' && (
+          <SubPage title="Beneficiaries" crumb="Saved payees" onBack={() => setView('overview')} onInfo={() => setInfoView('payees')}>
+            <BeneficiariesScreen />
+          </SubPage>
+        )}
+
+        {view === 'inheritance' && (
+          <SubPage title="Dead Man’s Switch" crumb="Inheritance" onBack={() => setView('overview')} onInfo={() => setInfoView('inheritance')}>
+            <SafetyScreen variant="inheritance" onChange={refetchAll} />
+          </SubPage>
+        )}
+
+        {view === 'safety' && (
+          <SubPage title="Safety" crumb="Guardians & limits" onBack={() => setView('overview')} onInfo={() => setInfoView('safety')}>
+            <SafetyScreen variant="guardians" onChange={refetchAll} />
+          </SubPage>
+        )}
+      </main>
 
       {panel === 'deposit' && (
         <Modal title="Deposit" onClose={() => setPanel(null)}>
@@ -241,15 +322,9 @@ export function Dashboard() {
         </Modal>
       )}
 
-      {panel === 'beneficiaries' && (
-        <Modal title="Beneficiaries" onClose={() => setPanel(null)}>
-          <BeneficiariesScreen />
-        </Modal>
-      )}
-
-      {panel === 'safety' && (
-        <Modal title="Safety" onClose={() => setPanel(null)}>
-          <SafetyScreen onChange={refetchAll} />
+      {infoView && (
+        <Modal title={PAGE_INFO[infoView].title} onClose={() => setInfoView(null)}>
+          <div className="info-body">{PAGE_INFO[infoView].body}</div>
         </Modal>
       )}
 
@@ -265,15 +340,173 @@ export function Dashboard() {
   );
 }
 
+const PAGE_INFO: Record<View, { title: string; body: React.ReactNode }> = {
+  overview: {
+    title: 'About your overview',
+    body: (
+      <>
+        <p>
+          This is your safe at a glance. <strong>Vault balance</strong> is what&rsquo;s protected
+          inside the Moray contract; <strong>In your wallet</strong> is what&rsquo;s still in your
+          signer, ready to deposit.
+        </p>
+        <p>
+          <strong>Move money</strong> lets you deposit into the vault, send to someone (with a
+          recallable clearing window), or withdraw back to your wallet.
+        </p>
+        <p>
+          <strong>Activity</strong> and <strong>Safeguards</strong> each have their own page for the
+          full picture; the overview shows your protection status at a glance.
+        </p>
+      </>
+    ),
+  },
+  activity: {
+    title: 'About activity',
+    body: (
+      <>
+        <p>
+          Your complete on-chain history, read straight from the vault&rsquo;s events, deposits,
+          sends (with their clearing status), and withdrawals.
+        </p>
+        <p>
+          A send or large withdrawal shows as <strong>Clearing</strong> while it&rsquo;s inside its
+          recallable window, then <strong>Sent</strong> once it lands or <strong>Recalled</strong> if
+          you pulled it back. Every row links to the transaction on the explorer.
+        </p>
+      </>
+    ),
+  },
+  payees: {
+    title: 'About beneficiaries',
+    body: (
+      <>
+        <p>
+          Beneficiaries are a private address book of the people and services you pay. Saving and
+          naming an address means Moray <strong>recognizes it</strong> when you send.
+        </p>
+        <p>
+          It also arms the <strong>address-poisoning check</strong>: if someone sends you a lookalike
+          address that mimics a saved beneficiary, Moray hard-flags it before you can pay it.
+        </p>
+        <p>
+          The list is saved on this device and never leaves it. Naming a payee is for recognition
+          only, it never shortens a hold: a brand-new address still clears through its window.
+        </p>
+      </>
+    ),
+  },
+  inheritance: {
+    title: 'About the Dead Man’s Switch',
+    body: (
+      <>
+        <p>
+          The Dead Man&rsquo;s Switch is how your funds reach someone you trust if you can no longer
+          reach them yourself. You name an <strong>heir</strong> and an <strong>inactivity
+          period</strong>.
+        </p>
+        <p>
+          If you go silent for that whole period, your heir can begin inheriting, on a delay you can
+          <strong> always cancel</strong> just by checking in or using your vault.
+        </p>
+        <p>
+          Every change here is <strong>time-locked and reversible</strong>, so no one can quietly
+          set themselves as your heir and drain the vault.
+        </p>
+      </>
+    ),
+  },
+  safety: {
+    title: 'About Safety',
+    body: (
+      <>
+        <p>
+          Safety is where you set your on-chain guardians and limits. The <strong>safe
+          address</strong> is where the kill switch sweeps your funds. The <strong>recovery
+          contact</strong> can freeze your vault or sweep it to your safe address if your key is
+          stolen, but can never take your funds.
+        </p>
+        <p>
+          The <strong>instant limit</strong> caps how much can leave instantly each day; anything
+          above it is delayed and recallable.
+        </p>
+        <p>
+          <strong>Panic freeze</strong> instantly stops all money leaving (reversible with a
+          time-locked unfreeze). The <strong>kill switch</strong> sweeps everything to your safe
+          address and freezes the vault. Powerful changes are time-locked; protective freezes are
+          instant.
+        </p>
+      </>
+    ),
+  },
+};
+
+function RailItem({
+  icon,
+  label,
+  active,
+  onClick,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      className={`rail-icon${active ? ' active' : ''}`}
+      title={label}
+      aria-label={label}
+      aria-current={active ? 'page' : undefined}
+      onClick={onClick}
+    >
+      {icon}
+      <span className="rail-label">{label}</span>
+    </button>
+  );
+}
+
+function SubPage({
+  title,
+  crumb,
+  onBack,
+  onInfo,
+  children,
+}: {
+  title: string;
+  crumb?: string;
+  onBack: () => void;
+  onInfo: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <>
+      <header className="dash-head">
+        <div>
+          <div className="dash-crumb">Wallet · {crumb ?? title}</div>
+          <h1 className="dash-title">{title}</h1>
+        </div>
+        <div className="dash-head-nav">
+          <button className="info-btn" onClick={onInfo} aria-label="About this page" title="About this page">
+            <InfoIcon size={18} />
+          </button>
+          <button className="pill subpage-back" onClick={onBack}>
+            ← Overview
+          </button>
+        </div>
+      </header>
+      <div className="subpage-body">{children}</div>
+    </>
+  );
+}
+
 /** A live read of the on-chain guardians + limits — the safe's protective state. */
 function Safeguards({
   acct,
   explorer,
-  onManage,
 }: {
   acct: AcctTuple | undefined;
   explorer: string | undefined;
-  onManage: () => void;
 }) {
   const loaded = acct !== undefined;
   const isSet = (x?: string) => Boolean(x && x !== ZERO);
@@ -294,64 +527,30 @@ function Safeguards({
   ];
 
   return (
-    <section className="safeguards">
-      <div className="dash-section-head">
-        <span className="dash-eyebrow">
-          <span className="idx" />
-          Safeguards
-        </span>
-        <span className="dash-badge">
-          <ShieldIcon size={13} /> Live
-        </span>
-      </div>
-      <div className="wallet-panel safeguards-panel">
-        {rows.map((r) => (
-          <div className="safeguard-row" key={r.label}>
-            <div className="safeguard-head">
-              <span className={`safeguard-dot${r.set ? ' on' : ''}`} />
-              <span className="safeguard-label">{r.label}</span>
-            </div>
-            {r.addr && r.set && explorer ? (
-              <a
-                className="safeguard-value mono link"
-                href={`${explorer}/address/${r.addr}`}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                {r.value}
-              </a>
-            ) : (
-              <span className={`safeguard-value mono${r.set ? '' : ' muted'}`}>
-                {loaded ? r.value : '…'}
-              </span>
-            )}
+    <div className="safeguard-list">
+      {rows.map((r) => (
+        <div className="safeguard-row" key={r.label}>
+          <div className="safeguard-head">
+            <span className={`safeguard-dot${r.set ? ' on' : ''}`} />
+            <span className="safeguard-label">{r.label}</span>
           </div>
-        ))}
-        <button className="bracket-btn safeguards-manage" onClick={onManage}>
-          Manage in Safety
-        </button>
-      </div>
-    </section>
-  );
-}
-
-function WalletAction({
-  label,
-  desc,
-  icon,
-  onClick,
-}: {
-  label: string;
-  desc: string;
-  icon: React.ReactNode;
-  onClick: () => void;
-}) {
-  return (
-    <button className="wallet-action" onClick={onClick}>
-      <span className="wallet-action-icon">{icon}</span>
-      <span className="wallet-action-label">{label}</span>
-      <span className="wallet-action-desc">{desc}</span>
-    </button>
+          {r.addr && r.set && explorer ? (
+            <a
+              className="safeguard-value mono link"
+              href={`${explorer}/address/${r.addr}`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {r.value}
+            </a>
+          ) : (
+            <span className={`safeguard-value mono${r.set ? '' : ' muted'}`}>
+              {loaded ? r.value : '…'}
+            </span>
+          )}
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -376,24 +575,23 @@ function CopyAddress({ address }: { address: string }) {
       aria-label={copied ? 'Address copied' : 'Copy your wallet address'}
     >
       <span className="mono">{shortAddress(address)}</span>
-      {copied ? <CheckIcon size={13} /> : <CopyIcon size={13} />}
+      {copied ? <CheckIcon size={14} /> : <CopyIcon size={14} />}
     </button>
   );
 }
 
 function NotDeployed() {
   return (
-    <section className="card card-pad">
-      <span className="eyebrow">Almost there</span>
-      <h1 className="h-title" style={{ margin: '8px 0' }}>
+    <div className="dcard" style={{ padding: 32, maxWidth: 640, margin: '40px auto' }}>
+      <span className="dcard-label">Almost there</span>
+      <h1 className="dash-title" style={{ margin: '10px 0' }}>
         Point the app at your vault
       </h1>
-      <p className="muted">
+      <p className="card-note">
         Deploy <span className="mono">MorayVault</span> to Monad testnet, then set{' '}
-        <span className="mono">NEXT_PUBLIC_MORAY_ADDRESS</span> in{' '}
-        <span className="mono">web/.env.local</span> and restart. Your balance and
-        activity will read live from that contract.
+        <span className="mono">NEXT_PUBLIC_MORAY_ADDRESS</span> and restart. Your balance
+        and activity will read live from that contract.
       </p>
-    </section>
+    </div>
   );
 }

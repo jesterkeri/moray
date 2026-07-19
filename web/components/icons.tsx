@@ -122,8 +122,26 @@ export const TrashIcon = ({ size = 16 }: IconProps) => (
 
 export const CopyIcon = ({ size = 16 }: IconProps) => (
   <svg {...base(size)}>
-    <rect x="9" y="9" width="11" height="11" rx="0" />
+    <rect x="9" y="9" width="11" height="11" rx="2" />
     <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+  </svg>
+);
+
+export const HomeIcon = ({ size = 18 }: IconProps) => (
+  <svg {...base(size)}>
+    <path d="M3 10.5 12 3l9 7.5M5 9.5V21h14V9.5" />
+  </svg>
+);
+
+export const ChevronLeftIcon = ({ size = 16 }: IconProps) => (
+  <svg {...base(size)}>
+    <path d="M15 18l-6-6 6-6" />
+  </svg>
+);
+
+export const HourglassIcon = ({ size = 18 }: IconProps) => (
+  <svg {...base(size)}>
+    <path d="M6 2h12M6 22h12M6 2c0 4 4 5.5 6 10 2-4.5 6-6 6-10M6 22c0-4 4-5.5 6-10 2 4.5 6 6 6 10" />
   </svg>
 );
 

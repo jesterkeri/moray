@@ -33,7 +33,13 @@ type AcctTuple = readonly [string, string, string, bigint, bigint, boolean, bigi
 type PendingTuple = readonly [number, string, bigint, bigint];
 type RowType = 'address' | 'duration' | 'amount';
 
-export function SafetyScreen({ onChange }: { onChange?: () => void }) {
+export function SafetyScreen({
+  onChange,
+  variant = 'guardians',
+}: {
+  onChange?: () => void;
+  variant?: 'guardians' | 'inheritance';
+}) {
   const { address } = useAccount();
   const now = useNow();
   const enabled = Boolean(address) && Boolean(MORAY_ADDRESS);
@@ -208,9 +214,17 @@ export function SafetyScreen({ onChange }: { onChange?: () => void }) {
 
   const fmtAddr = (x?: string) => (x && x !== ZERO ? shortAddress(x) : 'Not set');
 
-  const rows: { kind: number; label: string; value: string; hint: string; type: RowType }[] = [
+  const allRows: {
+    kind: number;
+    group: 'guardians' | 'inheritance';
+    label: string;
+    value: string;
+    hint: string;
+    type: RowType;
+  }[] = [
     {
       kind: KIND.SetSafe,
+      group: 'guardians',
       label: 'Safe address',
       value: configReady ? fmtAddr(safe) : '…',
       hint: 'Where the kill switch sweeps your funds. Set it from a trusted device.',
@@ -218,6 +232,7 @@ export function SafetyScreen({ onChange }: { onChange?: () => void }) {
     },
     {
       kind: KIND.SetRecovery,
+      group: 'guardians',
       label: 'Recovery contact',
       value: configReady ? fmtAddr(recovery) : '…',
       hint: 'Can freeze your vault or sweep to your safe address if your key is stolen. Can never take your funds.',
@@ -225,6 +240,7 @@ export function SafetyScreen({ onChange }: { onChange?: () => void }) {
     },
     {
       kind: KIND.SetHeir,
+      group: 'inheritance',
       label: 'Heir',
       value: configReady ? fmtAddr(heir) : '…',
       hint: 'Inherits after you go inactive, on a delay you can always veto by using your vault.',
@@ -232,6 +248,7 @@ export function SafetyScreen({ onChange }: { onChange?: () => void }) {
     },
     {
       kind: KIND.SetInactivity,
+      group: 'inheritance',
       label: 'Inactivity period',
       value: configReady ? (inactivity > 0 ? formatDuration(inactivity) : 'Off') : '…',
       hint: 'How long of silence before your heir can start inheriting.',
@@ -239,12 +256,14 @@ export function SafetyScreen({ onChange }: { onChange?: () => void }) {
     },
     {
       kind: KIND.SetInstantLimit,
+      group: 'guardians',
       label: 'Instant limit',
       value: configReady && instantLimit !== undefined ? `${formatMon(instantLimit)} MON` : '…',
       hint: 'How much you can cash out instantly per day. Raising it is time-locked; lowering is instant.',
       type: 'amount',
     },
   ];
+  const rows = allRows.filter((r) => r.group === variant);
 
   return (
     <div>
@@ -279,25 +298,24 @@ export function SafetyScreen({ onChange }: { onChange?: () => void }) {
         </div>
       )}
 
-      <div className="safety-section-label">Guardians &amp; limits</div>
-      <div className="card card-pad" style={{ paddingTop: 6, paddingBottom: 6 }}>
+      {variant === 'inheritance' && (
+        <p className="muted" style={{ fontSize: 13.5, marginBottom: 16 }}>
+          Name an heir and a period of silence. If you go inactive for that long, your
+          heir can start inheriting, on a delay you can always cancel just by checking in
+          or using your vault. Changes here are time-locked and reversible.
+        </p>
+      )}
+
+      <div className="safety-section-label">
+        {variant === 'inheritance' ? 'Dead Man’s Switch' : 'Guardians & limits'}
+      </div>
+      <div className="tile-grid">
         {rows.map((row) => (
-          <div key={row.kind}>
-            <div className="set-row">
-              <div>
-                <div className="set-label">{row.label}</div>
-                <div className="set-value mono">{row.value}</div>
-                <div className="set-hint">{row.hint}</div>
-              </div>
-              <button
-                className="btn btn-secondary btn-sm"
-                disabled={busy || hasPending || editing !== null || !configReady}
-                onClick={() => openEdit(row.kind)}
-              >
-                {row.value === 'Not set' || row.value === 'Off' || row.value === '—' ? 'Set' : 'Change'}
-              </button>
-            </div>
-            {editing === row.kind && (
+          <div className="dcard setting-tile" key={row.kind}>
+            <span className="dcard-label">{row.label}</span>
+            <div className="setting-value mono">{row.value}</div>
+            <p className="setting-hint">{row.hint}</p>
+            {editing === row.kind ? (
               <div className="set-edit">
                 <input
                   className={`field ${row.type === 'address' ? 'field-mono' : ''}`}
@@ -314,23 +332,25 @@ export function SafetyScreen({ onChange }: { onChange?: () => void }) {
                   /^\d+$/.test(editValue) &&
                   Number(editValue) > 0 &&
                   Number(editValue) <= 315_360_000 && (
-                    <div className="set-hint" style={{ marginTop: 6 }}>
+                    <div className="setting-hint" style={{ marginTop: 6 }}>
                       = {formatDuration(Number(editValue))}
                     </div>
                   )}
                 {editError && (
                   <div style={{ color: 'var(--danger)', fontSize: 12.5, marginTop: 7 }}>{editError}</div>
                 )}
-                <div className="row gap-2" style={{ marginTop: 10 }}>
+                <div className="row gap-2" style={{ marginTop: 12 }}>
                   <button
-                    className="btn btn-primary btn-sm"
+                    className="pill pill-primary"
+                    style={{ height: 40 }}
                     disabled={busy || !configReady || hasPending}
                     onClick={() => saveEdit(row.kind, row.type)}
                   >
                     {busyLabel === KIND_LABEL[row.kind] ? <span className="spinner-sm" /> : 'Save'}
                   </button>
                   <button
-                    className="btn btn-ghost btn-sm"
+                    className="pill"
+                    style={{ height: 40 }}
                     disabled={busy}
                     onClick={() => {
                       setEditing(null);
@@ -341,85 +361,102 @@ export function SafetyScreen({ onChange }: { onChange?: () => void }) {
                   </button>
                 </div>
               </div>
+            ) : (
+              <button
+                className="pill setting-action"
+                disabled={busy || hasPending || editing !== null || !configReady}
+                onClick={() => openEdit(row.kind)}
+              >
+                {row.value === 'Not set' || row.value === 'Off' || row.value === '—' ? 'Set' : 'Change'}
+              </button>
             )}
           </div>
         ))}
       </div>
 
-      <div className="safety-section-label">Emergency</div>
-      <div className="card card-pad stack gap-3">
-        {frozen ? (
-          <EmergencyRow
-            title="Unfreeze"
-            desc="Re-enable money leaving your vault. Time-locked, so a stolen key can't instantly re-open it."
-            action={
-              <button
-                className="btn btn-secondary btn-sm"
-                disabled={busy || hasPending || !configReady}
-                onClick={() => requestChange(KIND.Unfreeze, ZERO, 0n, 'Unfreeze')}
-              >
-                {busyLabel === 'Unfreeze' ? <span className="spinner-sm" /> : 'Unfreeze'}
-              </button>
-            }
-          />
-        ) : (
-          <EmergencyRow
-            title="Panic freeze"
-            desc="Instantly stop all money leaving your vault. Reversible with a time-locked unfreeze."
-            action={
-              <button
-                className="btn btn-danger btn-sm"
-                disabled={busy || !configReady}
-                onClick={() => simpleWrite('panic', 'panic')}
-              >
-                {busyLabel === 'panic' ? <span className="spinner-sm" /> : 'Freeze'}
-              </button>
-            }
-          />
-        )}
-
-        <EmergencyRow
-          title="Check in"
-          desc="Prove you're here. Resets your inactivity clock and cancels any inheritance in progress."
-          action={
-            <button className="btn btn-secondary btn-sm" disabled={busy} onClick={() => simpleWrite('checkIn', 'checkin')}>
-              {busyLabel === 'checkin' ? <span className="spinner-sm" /> : 'Check in'}
-            </button>
-          }
-        />
-
-        <EmergencyRow
-          title="Kill switch"
-          desc={
-            !configReady
-              ? 'Loading your settings…'
-              : !hasSafe
-                ? 'Set a safe address first. Then this sweeps everything there and freezes the vault.'
-                : !safeMatured
-                  ? `Sweeps everything to your safe address and freezes the vault. Your safe address matures in ${cfgDelay !== undefined && now > 0 ? formatDuration(safeSetAt + cfgDelay - now) : '…'}.`
-                  : `Sweeps everything to ${shortAddress(safe)} and freezes the vault.`
-          }
-          action={
-            killConfirm && safeMatured && configReady ? (
-              <button
-                className="btn btn-danger btn-sm"
-                disabled={busy || !configReady || !safeMatured}
-                onClick={killSwitch}
-              >
-                {busyLabel === 'kill' ? <span className="spinner-sm" /> : 'Confirm sweep'}
-              </button>
+      {variant === 'inheritance' ? (
+        <>
+          <div className="safety-section-label">Staying active</div>
+          <div className="tile-grid">
+            <EmergencyRow
+              title="Check in"
+              desc="Prove you're here. Resets your inactivity clock and cancels any inheritance in progress."
+              action={
+                <button className="btn btn-secondary btn-sm" disabled={busy} onClick={() => simpleWrite('checkIn', 'checkin')}>
+                  {busyLabel === 'checkin' ? <span className="spinner-sm" /> : 'Check in'}
+                </button>
+              }
+            />
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="safety-section-label">Emergency</div>
+          <div className="tile-grid">
+            {frozen ? (
+              <EmergencyRow
+                title="Unfreeze"
+                desc="Re-enable money leaving your vault. Time-locked, so a stolen key can't instantly re-open it."
+                action={
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    disabled={busy || hasPending || !configReady}
+                    onClick={() => requestChange(KIND.Unfreeze, ZERO, 0n, 'Unfreeze')}
+                  >
+                    {busyLabel === 'Unfreeze' ? <span className="spinner-sm" /> : 'Unfreeze'}
+                  </button>
+                }
+              />
             ) : (
-              <button
-                className="btn btn-danger btn-sm"
-                disabled={busy || !safeMatured || !configReady}
-                onClick={() => setKillConfirm(true)}
-              >
-                Kill switch
-              </button>
-            )
-          }
-        />
-      </div>
+              <EmergencyRow
+                title="Panic freeze"
+                desc="Instantly stop all money leaving your vault. Reversible with a time-locked unfreeze."
+                action={
+                  <button
+                    className="btn btn-danger btn-sm"
+                    disabled={busy || !configReady}
+                    onClick={() => simpleWrite('panic', 'panic')}
+                  >
+                    {busyLabel === 'panic' ? <span className="spinner-sm" /> : 'Freeze'}
+                  </button>
+                }
+              />
+            )}
+
+            <EmergencyRow
+              title="Kill switch"
+              desc={
+                !configReady
+                  ? 'Loading your settings…'
+                  : !hasSafe
+                    ? 'Set a safe address first. Then this sweeps everything there and freezes the vault.'
+                    : !safeMatured
+                      ? `Sweeps everything to your safe address and freezes the vault. Your safe address matures in ${cfgDelay !== undefined && now > 0 ? formatDuration(safeSetAt + cfgDelay - now) : '…'}.`
+                      : `Sweeps everything to ${shortAddress(safe)} and freezes the vault.`
+              }
+              action={
+                killConfirm && safeMatured && configReady ? (
+                  <button
+                    className="btn btn-danger btn-sm"
+                    disabled={busy || !configReady || !safeMatured}
+                    onClick={killSwitch}
+                  >
+                    {busyLabel === 'kill' ? <span className="spinner-sm" /> : 'Confirm sweep'}
+                  </button>
+                ) : (
+                  <button
+                    className="btn btn-danger btn-sm"
+                    disabled={busy || !safeMatured || !configReady}
+                    onClick={() => setKillConfirm(true)}
+                  >
+                    Kill switch
+                  </button>
+                )
+              }
+            />
+          </div>
+        </>
+      )}
 
       <div className="row gap-2" style={{ marginTop: 16, color: 'var(--text-faint)', fontSize: 12 }}>
         <ShieldIcon size={13} />
@@ -431,14 +468,10 @@ export function SafetyScreen({ onChange }: { onChange?: () => void }) {
 
 function EmergencyRow({ title, desc, action }: { title: string; desc: string; action: React.ReactNode }) {
   return (
-    <div className="row between gap-3" style={{ alignItems: 'flex-start' }}>
-      <div style={{ flex: 1 }}>
-        <div className="set-label">{title}</div>
-        <div className="set-hint" style={{ maxWidth: 300 }}>
-          {desc}
-        </div>
-      </div>
-      {action}
+    <div className="dcard setting-tile">
+      <span className="dcard-label">{title}</span>
+      <p className="setting-hint">{desc}</p>
+      <div className="setting-action">{action}</div>
     </div>
   );
 }
