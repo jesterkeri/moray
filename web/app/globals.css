@@ -825,6 +825,49 @@ button {
   font-weight: 650;
 }
 
+/* time-lock clock cards — pending config change + inheritance countdown */
+.timelock-card {
+  display: flex;
+  align-items: center;
+  gap: clamp(18px, 2.4vw, 34px);
+  padding: clamp(20px, 2.2vw, 30px);
+  border: 1px solid var(--accent);
+  background: var(--accent-soft);
+  margin-bottom: 22px;
+}
+.timelock-card[data-tone='danger'] {
+  border-color: var(--danger);
+  background: var(--danger-soft);
+}
+.timelock-card .dial-wrap {
+  flex-shrink: 0;
+  padding: 0;
+}
+.timelock-body {
+  min-width: 0;
+}
+.timelock-title {
+  font-family: var(--font-display);
+  font-size: clamp(19px, 2vw, 25px);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  margin: 10px 0;
+}
+.timelock-text {
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--text-muted);
+  margin-bottom: 18px;
+  max-width: 54ch;
+}
+@media (max-width: 640px) {
+  .timelock-card {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
 /* move-money card — deposit / send / withdraw quick actions */
 .card-move {
   grid-column: 1;
@@ -2164,6 +2207,10 @@ button {
 }
 .countdown[data-done='true'] {
   color: var(--accent);
+}
+.pending-clock {
+  flex-shrink: 0;
+  display: inline-flex;
 }
 
 /* --- statement -------------------------------------------------------------- */

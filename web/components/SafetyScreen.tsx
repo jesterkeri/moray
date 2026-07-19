@@ -8,6 +8,7 @@ import { monadTestnet } from '@/lib/chain';
 import { formatDuration } from '@/lib/format';
 import { useNow } from '@/lib/useNow';
 import { ShieldIcon, LockIcon, ClockIcon } from './icons';
+import { Clock } from './Clock';
 
 const ZERO = '0x0000000000000000000000000000000000000000';
 
@@ -64,6 +65,20 @@ export function SafetyScreen({
     functionName: 'configDelay',
     query: { enabled },
   });
+  // The heir-started, owner-vetoable inheritance countdown (Dead Man's Switch).
+  const { data: inhData, refetch: refetchInh } = useReadContract({
+    address: MORAY_ADDRESS,
+    abi: morayAbi,
+    functionName: 'inheritance',
+    args: address ? [address] : undefined,
+    query: { enabled: enabled && variant === 'inheritance', refetchInterval: 8000 },
+  });
+  const { data: vetoDelayData } = useReadContract({
+    address: MORAY_ADDRESS,
+    abi: morayAbi,
+    functionName: 'inheritanceVetoDelay',
+    query: { enabled: enabled && variant === 'inheritance' },
+  });
 
   const a = acctData as unknown as AcctTuple | undefined;
   const p = pendingData as unknown as PendingTuple | undefined;
@@ -86,7 +101,13 @@ export function SafetyScreen({
   const hasSafe = Boolean(safe && safe !== ZERO);
   const safeMatured = hasSafe && cfgDelay !== undefined && now > 0 && now >= safeSetAt + cfgDelay;
 
-  const { writeContract, data: hash, isPending } = useWriteContract();
+  const inh = inhData as readonly [boolean, bigint] | undefined;
+  const inhActive = inh?.[0] ?? false;
+  const inhExecuteAfter = inh ? Number(inh[1]) : 0;
+  const vetoTotal = vetoDelayData !== undefined ? Number(vetoDelayData) : 0;
+  const inhSecondsLeft = now > 0 ? inhExecuteAfter - now : vetoTotal;
+
+  const { writeContract, data: hash, isPending, error: writeError } = useWriteContract();
   const {
     isLoading: mining,
     isSuccess: confirmed,
@@ -105,6 +126,7 @@ export function SafetyScreen({
     if (!confirmed) return;
     refetchAcct();
     refetchPending();
+    refetchInh();
     onChange?.();
     setEditing(null);
     setEditValue('');
@@ -267,6 +289,32 @@ export function SafetyScreen({
 
   return (
     <div>
+      {variant === 'inheritance' && inhActive && (
+        <div className="timelock-card" data-tone="danger">
+          <Clock
+            secondsLeft={Math.max(0, inhSecondsLeft)}
+            totalSeconds={vetoTotal}
+            tone="danger"
+            caption={inhSecondsLeft > 0 ? 'Until sweep' : 'Ready'}
+            size={150}
+          />
+          <div className="timelock-body">
+            <span className="dcard-label" style={{ color: 'var(--danger)' }}>Inheritance in progress</span>
+            <h3 className="timelock-title">
+              {inhSecondsLeft > 0 ? 'Your heir has started inheriting.' : 'Your heir can sweep your vault now.'}
+            </h3>
+            <p className="timelock-text">
+              {inhSecondsLeft > 0
+                ? 'If you do nothing, your vault sweeps to your heir when the clock runs out. Check in now to cancel it and reset your inactivity clock.'
+                : 'The veto window has passed. Check in immediately to cancel — otherwise your heir can execute the sweep.'}
+            </p>
+            <button className="pill pill-primary" disabled={busy} onClick={() => simpleWrite('checkIn', 'checkin')}>
+              {busyLabel === 'checkin' ? <span className="spinner-sm" /> : 'Check in now to cancel'}
+            </button>
+          </div>
+        </div>
+      )}
+
       {frozen && (
         <div className="safety-banner" data-tone="warning">
           <LockIcon size={17} />
@@ -277,24 +325,34 @@ export function SafetyScreen({
       )}
 
       {hasPending && (
-        <div className="safety-banner" data-tone="warning">
-          <ClockIcon size={17} />
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 13.5, fontWeight: 600 }}>{KIND_LABEL[pKind]} change pending</div>
-            <div style={{ fontSize: 12.5, opacity: 0.85 }}>
-              {pMatured ? 'Ready to apply.' : `Applies in ${formatDuration(pExecuteAfter - now)}. Cancel it any time.`}
+        <div className="timelock-card">
+          <Clock
+            secondsLeft={Math.max(0, pExecuteAfter - now)}
+            totalSeconds={cfgDelay ?? 0}
+            tone="accent"
+            caption={pMatured ? 'Ready' : 'Applies in'}
+            size={130}
+          />
+          <div className="timelock-body">
+            <span className="dcard-label">{KIND_LABEL[pKind]} change pending</span>
+            <p className="timelock-text" style={{ marginTop: 12 }}>
+              {pMatured
+                ? 'The time-lock has passed. Apply it now, or cancel.'
+                : 'This change is time-locked, so a stolen key can’t apply it instantly. Cancel any time before it applies.'}
+            </p>
+            <div className="row gap-2">
+              <button className="pill" disabled={busy} onClick={() => simpleWrite('cancelChange', 'cancel')}>
+                {busyLabel === 'cancel' ? <span className="spinner-sm" /> : 'Cancel'}
+              </button>
+              <button
+                className="pill pill-primary"
+                disabled={busy || !pMatured || !configReady}
+                onClick={() => simpleWrite('executeChange', 'apply')}
+              >
+                {busyLabel === 'apply' ? <span className="spinner-sm" /> : 'Apply'}
+              </button>
             </div>
           </div>
-          <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => simpleWrite('cancelChange', 'cancel')}>
-            {busyLabel === 'cancel' ? <span className="spinner-sm" /> : 'Cancel'}
-          </button>
-          <button
-            className="btn btn-primary btn-sm"
-            disabled={busy || !pMatured || !configReady}
-            onClick={() => simpleWrite('executeChange', 'apply')}
-          >
-            {busyLabel === 'apply' ? <span className="spinner-sm" /> : 'Apply'}
-          </button>
         </div>
       )}
 
@@ -456,6 +514,12 @@ export function SafetyScreen({
             />
           </div>
         </>
+      )}
+
+      {writeError && (
+        <div style={{ color: 'var(--danger)', fontSize: 12.5, marginTop: 16 }}>
+          {writeError.message.split('\n')[0].slice(0, 160)}
+        </div>
       )}
 
       <div className="row gap-2" style={{ marginTop: 16, color: 'var(--text-faint)', fontSize: 12 }}>

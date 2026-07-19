@@ -294,7 +294,7 @@ export function Dashboard() {
                 !known
                   ? 'Sent. Check Clearing below.'
                   : seconds === 0
-                    ? 'Sent — it clears instantly.'
+                    ? 'Sent — no clearing hold.'
                     : `Sent. Clearing in ${formatDuration(seconds)} — recall it below any time.`,
               );
             }}

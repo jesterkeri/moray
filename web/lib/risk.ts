@@ -30,21 +30,25 @@ export async function assessRecipient(opts: {
 }): Promise<RiskVerdict> {
   const { publicClient, from, to, morayAddress, knownPayees = [] } = opts;
 
-  // Address-poisoning lookalike: mimics the start+end of a saved payee but differs.
-  const poison = findLookalike(to, knownPayees);
-  if (poison) {
-    return {
-      level: 'risk',
-      title: 'Looks like address poisoning',
-      reason: `This mimics the start and end of ${poison.name}'s address but the middle is different. Verify every character before sending.`,
-      cleared: false,
-    };
-  }
-
   // Exact match to a payee you saved. Recognition only: it never lowers the
   // hold, which is decided by the on-chain reads below.
   const saved = findExact(to, knownPayees);
   const savedAs = saved?.name;
+
+  // Address-poisoning lookalike: mimics the start+end of a saved payee but
+  // differs. Skip this when the address IS a saved payee (an exact match can't be
+  // an impersonation of another payee).
+  if (!saved) {
+    const poison = findLookalike(to, knownPayees);
+    if (poison) {
+      return {
+        level: 'risk',
+        title: 'Looks like address poisoning',
+        reason: `This mimics the start and end of ${poison.name}'s address but the middle is different. Verify every character before sending.`,
+        cleared: false,
+      };
+    }
+  }
 
   try {
     const [cleared, txCount, code] = await Promise.all([

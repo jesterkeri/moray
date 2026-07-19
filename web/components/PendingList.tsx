@@ -4,8 +4,8 @@ import { useEffect, useState } from 'react';
 import { useAccount, useReadContract, useReadContracts, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { MORAY_ADDRESS, morayAbi, formatMon, shortAddress } from '@/lib/moray';
 import { monadTestnet } from '@/lib/chain';
-import { formatDuration } from '@/lib/format';
 import { useNow } from '@/lib/useNow';
+import { Clock } from './Clock';
 
 type TransferTuple = readonly [string, string, bigint, bigint, number]; // from,to,amount,unlock,status
 
@@ -28,6 +28,18 @@ export function PendingList({ onChange }: { onChange?: () => void }) {
     functionName: 'reclaimGrace',
     query: { enabled },
   });
+  const { data: newPayeeDelay } = useReadContract({
+    address: MORAY_ADDRESS,
+    abi: morayAbi,
+    functionName: 'minNewPayeeDelay',
+    query: { enabled },
+  });
+  const { data: withdrawDelay } = useReadContract({
+    address: MORAY_ADDRESS,
+    abi: morayAbi,
+    functionName: 'withdrawDelay',
+    query: { enabled },
+  });
 
   const idList = (ids as bigint[] | undefined) ?? [];
 
@@ -41,7 +53,7 @@ export function PendingList({ onChange }: { onChange?: () => void }) {
     query: { enabled: enabled && idList.length > 0, refetchInterval: 5000 },
   });
 
-  const { writeContract, data: hash, isPending } = useWriteContract();
+  const { writeContract, data: hash, isPending, error: writeError } = useWriteContract();
   const [actingId, setActingId] = useState<bigint | null>(null);
   const { isLoading: mining, isSuccess: confirmed } = useWaitForTransactionReceipt({
     hash,
@@ -82,6 +94,8 @@ export function PendingList({ onChange }: { onChange?: () => void }) {
   if (rows.length === 0) return null;
 
   const busy = isPending || mining;
+  const wDelay = withdrawDelay !== undefined ? Number(withdrawDelay) : 0;
+  const nDelay = newPayeeDelay !== undefined ? Number(newPayeeDelay) : 0;
 
   return (
     <section className="section">
@@ -96,7 +110,10 @@ export function PendingList({ onChange }: { onChange?: () => void }) {
       <div className="card">
         {rows.map((row) => {
           const grace = reclaimGrace !== undefined ? Number(reclaimGrace) : Infinity;
-          const remaining = now > 0 ? row.unlock - now : row.unlock;
+          // The clearing window's length, for the clock's depleting arc.
+          const total = (row.isSelf ? wDelay : nDelay) || 60;
+          // now===0 (pre-first-tick) shows a full clock, never the raw unix time.
+          const remaining = now > 0 ? row.unlock - now : total;
           const graceRemaining = now > 0 ? row.unlock + grace - now : Infinity;
           // A self-withdrawal (to == from) can always be claimed to the owner's
           // own wallet, so it never becomes "stuck"; only external sends to a
@@ -106,6 +123,11 @@ export function PendingList({ onChange }: { onChange?: () => void }) {
           const actingThis = busy && actingId === row.id;
           return (
             <div className="pending-row" key={row.id.toString()}>
+              {phase === 'clearing' && (
+                <span className="pending-clock">
+                  <Clock secondsLeft={remaining} totalSeconds={total} tone="accent" size={72} />
+                </span>
+              )}
               <div className="pending-meta">
                 <div className="pending-to">
                   {row.isSelf ? 'Withdrawal to your wallet' : `To ${shortAddress(row.to)}`}
@@ -115,7 +137,6 @@ export function PendingList({ onChange }: { onChange?: () => void }) {
 
               {phase === 'clearing' && (
                 <>
-                  <span className="countdown">{formatDuration(remaining)}</span>
                   <button className="btn btn-danger btn-sm" disabled={busy} onClick={() => act(row.id, 'cancel')}>
                     {actingThis ? <span className="spinner-sm" /> : 'Recall'}
                   </button>
@@ -150,6 +171,11 @@ export function PendingList({ onChange }: { onChange?: () => void }) {
           );
         })}
       </div>
+      {writeError && (
+        <div style={{ color: 'var(--danger)', fontSize: 12.5, margin: '10px 2px 0' }}>
+          {writeError.message.split('\n')[0].slice(0, 160)}
+        </div>
+      )}
     </section>
   );
 }
