@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { usePrivy } from '@privy-io/react-auth';
+import { usePrivy, useWallets } from '@privy-io/react-auth';
+import { useSetActiveWallet } from '@privy-io/wagmi';
 import { useAccount, useBalance, useReadContract } from 'wagmi';
 import {
   MORAY_ADDRESS,
@@ -47,6 +48,19 @@ type AcctTuple = readonly [string, string, string, bigint, bigint, boolean, bigi
 export function Dashboard() {
   const { address } = useAccount();
   const { user, logout } = usePrivy();
+
+  // Moray is embedded-wallet only. If an injected wallet (MetaMask) is also
+  // present, wagmi can pick it as the active account — which is on the wrong
+  // network and breaks every tx. Pin the Privy embedded wallet as active.
+  const { wallets } = useWallets();
+  const { setActiveWallet } = useSetActiveWallet();
+  useEffect(() => {
+    const embedded = wallets.find((w) => w.walletClientType === 'privy');
+    if (embedded && embedded.address.toLowerCase() !== address?.toLowerCase()) {
+      setActiveWallet(embedded);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wallets, address]);
   const [view, setView] = useState<View>('overview');
   const [panel, setPanel] = useState<Panel>(null);
   const [infoView, setInfoView] = useState<View | null>(null);
